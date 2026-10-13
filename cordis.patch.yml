@@ -1,0 +1,9 @@
+# dsh-offpeak bundle patch：一行装配进 profile。
+#
+# host 半（src/index.js）注册 sessionGuard 服务（冗余端口，供 input-traffic 适配）、
+# 高峰自动会话门（taskControl.pause/resume，缺失时回退锁等待队列）、
+# /session-guard/* 路由（路径保留旧名，input-traffic 依赖）与 设置→插件→offpeak 子板块。
+# 浏览器半（经 package.json dsh.client 声明）提供高峰面板（畅跑任务 + 拦截列表）。
+- insert:
+    - id: offpeak
+      name: dsh-offpeak

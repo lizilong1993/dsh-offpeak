@@ -1,0 +1,263 @@
+/**
+ * dsh-session-guard — 请求级守卫（`agent/request` waterfall，host）。
+ *
+ * 为什么需要它（findings F6）：现有 tick 只在 `NORMAL → PAUSED_PEAK` 跳变时处理
+ * `status === 'running'` 的会话，入峰后新启动的会话、以及入峰后切到官方源的会话
+ * 都漏网。请求级兜底覆盖这两个缺口。
+ *
+ * 判定顺序（**必须先 await next()**，见 findings F2：`installModelSelection` 会在
+ * waterfall 内把 provider/model 覆盖成用户在 UI 选的值）：
+ *   1. `providerGuard !== true` → 原样放行（退回现有纯时间判定）
+ *   2. 非 root agent 且 `guardSubagents === false` → 放行
+ *   3. 非高峰（含周末 / disabled）→ 放行
+ *   4. 目标 provider 非官方 → 放行（本地/第三方源照常跑）
+ *   5. 高峰 + 官方 → 拦截：hold（默认，挂起不报错）或 error（抛 PeakDeferredError）
+ *
+ * **互斥铁律**（findings F7）：hold 路径**严禁**调用 `gate.stopNextTurn` /
+ * `pauseGate.pause`——暂停要等安全边界，而请求被挂住后永远到不了安全边界，双方互等。
+ *
+ * **拒绝路径不丢输入**：hold 被 abort / 超限 / 顶替（以及 error 模式抛错）时，先调用
+ * `restoreInput` 把该会话「已 claim、未落库」的用户输入还回 next-turn 队列 —— 宿主
+ * `preStep()` 先 `inbox.claim()` 再派发本 waterfall，`user/message` 要等请求通过才落库，
+ * 不还就是真丢（用户点停止后消息凭空消失）。
+ *
+ * 任何判定异常都 fail-open 放行（绝不因为本插件让正常请求失败）。
+ */
+import { shouldPause } from './time-policy.js'
+import { PeakDeferredError } from './deferrals.js'
+
+/**
+ * 默认 root 判定：优先 `agents.roots()`，查不到再看 `agents.list()`；
+ * 两边都查不到 → 视为 root（fail-open 到「纳入守卫」）。
+ * @param {object} ctx
+ * @returns {(agent:object)=>boolean}
+ */
+export function makeIsRoot(ctx) {
+  return function isRoot(agent) {
+    try {
+      const agents = ctx && ctx.agents
+      const id = String((agent && agent.id) ?? '')
+      if (!agents || id === '') return true
+      const roots = typeof agents.roots === 'function' ? agents.roots() : []
+      if (Array.isArray(roots) && roots.some((a) => String((a && a.id) ?? '') === id)) return true
+      const all = typeof agents.list === 'function' ? agents.list() : []
+      if (Array.isArray(all) && all.some((a) => String((a && a.id) ?? '') === id)) return false
+      return true
+    } catch {
+      return true
+    }
+  }
+}
+
+/**
+ * @param {object} deps
+ * @param {object} deps.ctx host context（需 `on` / 可选 `agents`）
+ * @param {()=>object} deps.getSettings 读实时配置
+ * @param {{classify:(id:string)=>{official:boolean,matchedBy:string}}} deps.directory 端点目录
+ * @param {ReturnType<import('./deferrals.js').createDeferrals>} deps.deferrals 延后登记表
+ * @param {{stopNextTurn:(id:string,opts?:object)=>unknown}} [deps.gate] 会话门（**仅 error 模式**使用）
+ * @param {object} [deps.logger]
+ * @param {()=>Date} [deps.clock]
+ * @param {(agent:object)=>boolean} [deps.isRoot]
+ * @param {(ms:number)=>void} [deps.scheduleRelease] 挂起后请求一次退峰释放检查
+ * @param {(sessionId:string, date:Date)=>boolean} [deps.isFreeRunActive] 畅跑生效中的会话不拦
+ * @param {(sessionId:string, provider?:unknown, model?:unknown)=>void} [deps.recordTarget]
+ *   把这次请求的真实目标写入目标表（独立于 session/event 事件管道，供二维判定使用）
+ * @param {(sessionId:string, reason:string)=>void} [deps.restoreInput]
+ *   挂起被拒（abort / 超限 / 顶替 / 卸载）或 error 模式落地前，把该会话「已 claim、未落库」
+ *   的输入还回队列——宿主 preStep() 先 claim 再派发本 waterfall，user/message 要等请求
+ *   通过才落库，因此这两种收场方式都会让用户刚发的消息凭空消失。实现见 wiring.js。
+ * @returns {{install:()=>()=>void, handle:(payload:object, next:Function)=>Promise<unknown>, stats:()=>object}}
+ */
+export function createRequestGuard({
+  ctx,
+  getSettings,
+  directory,
+  deferrals,
+  gate,
+  logger,
+  clock = () => new Date(),
+  isRoot,
+  scheduleRelease,
+  isFreeRunActive,
+  recordTarget,
+  restoreInput,
+}) {
+  const rootCheck = isRoot ?? makeIsRoot(ctx)
+  const counters = { pass: 0, hold: 0, error: 0, skippedSubagent: 0, failOpen: 0 }
+
+  function readCfg() {
+    try {
+      const v = getSettings()
+      return v && typeof v === 'object' ? v : {}
+    } catch {
+      return {}
+    }
+  }
+
+  /** 把「已 claim、未落库」的输入还回队列；异常绝不影响判定。 */
+  function restoreUncommitted(sessionId, reason) {
+    if (typeof restoreInput !== 'function') return
+    try {
+      restoreInput(sessionId, reason)
+    } catch (e) {
+      logger?.warn?.(`[session-guard] restoring uncommitted input failed for ${sessionId}: ${String((e && e.message) || e)}`)
+    }
+  }
+
+  /** 同步决策：pass / error / hold。 */
+  function decide(payload, config) {
+    const cfg = readCfg()
+    if (cfg.providerGuard !== true) return { action: 'pass', why: 'provider-guard-off' }
+
+    const agent = payload && payload.agent
+    const sessionId = String((agent && agent.id) ?? '')
+    if (sessionId === '') {
+      logger?.warn?.('[session-guard] agent/request without agent.id — provider guard skipped')
+      counters.failOpen += 1
+      return { action: 'pass', why: 'no-session-id' }
+    }
+    if (cfg.guardSubagents === false && !rootCheck(agent)) {
+      counters.skippedSubagent += 1
+      return { action: 'pass', why: 'subagent' }
+    }
+
+    // 先算判定，再追踪目标：`recordTarget` 会写目标表**并触发 `maybeAutoResume`**（真副作用，
+    // 可能放行 / 恢复别的挂起），放在判定之前会让「这次请求刚被判为 hold」与「同一次调用顺手
+    // resume 该会话」并存（实测：pausedByPeak 被删、hold 已被结算但表里留着、退峰重复 resume）。
+    const decision = verdictFor(cfg, payload, config, sessionId)
+    if (typeof recordTarget === 'function') {
+      try {
+        recordTarget(sessionId, config && config.provider, config && config.model)
+      } catch {
+        /* 追踪失败绝不影响判定 */
+      }
+    }
+    return decision
+  }
+
+  /**
+   * 纯判定（无副作用地算出 pass / hold / error）。
+   *
+   * 目标追踪**不在**这里：它独立于 session/event 事件管道（事件缺失时目标恒为 unknown →
+   * 保守暂停 → 连非官方源也一起拦），但带真副作用，必须等判定落定后再做。
+   */
+  function verdictFor(cfg, payload, config, sessionId) {
+    const verdict = shouldPause(cfg, clock())
+    if (!verdict.pause) return { action: 'pass', why: verdict.reason }
+
+    // 畅跑（单会话豁免）：该会话在排定窗口内不被拦——请求级 hold 也要让路，
+    // 否则「无视峰谷照常运行」在请求这一层是假的。
+    // 注意：pass 计数由调用方（handle）统一累加，这里不要再加一次。
+    if (typeof isFreeRunActive === 'function') {
+      let free
+      try {
+        free = isFreeRunActive(sessionId, clock()) === true
+      } catch {
+        free = false
+      }
+      if (free) return { action: 'pass', why: 'free-run' }
+    }
+
+    // 判定带上 model：默认关键字 `deepseek` 会把「名字带 deepseek 的模型」直接算官方，
+    // 无论它跑在哪个 provider 上（中转/本地源同样吃官方计费）。
+    const cls = directory.classify(config && config.provider, config && config.model)
+    if (!cls.official) {
+      logger?.info?.(`[session-guard] peak but target "${String(config && config.provider)}/${String(config && config.model)}" is not official (matchedBy=${cls.matchedBy}) — pass`)
+      return { action: 'pass', why: 'not-official' }
+    }
+
+    const info = {
+      provider: (config && config.provider) ?? null,
+      model: (config && config.model) ?? null,
+      config,
+      matchedBy: cls.matchedBy,
+    }
+    const mode = cfg.deferredMode === 'error' ? 'error' : 'hold'
+    const resume = cfg.deferredResume !== false
+
+    // 退峰不自动续跑：hold 也无法自动放行 → 直接转 error（避免无限挂起）
+    if (mode === 'hold' && resume) {
+      counters.hold += 1
+      logger?.info?.(`[session-guard] peak + official "${info.provider}/${info.model}" — holding request of ${sessionId} (matchedBy=${cls.matchedBy})`)
+      const promise = deferrals.hold(
+        sessionId,
+        // onReject：abort / 超限 / 顶替 / 卸载时先把未落库输入还回队列（否则用户点停止即丢输入）
+        { ...info, onReject: (reason) => restoreUncommitted(sessionId, reason) },
+        payload && payload.signal,
+      )
+      if (scheduleRelease) {
+        try {
+          scheduleRelease()
+        } catch (e) {
+          logger?.warn?.(`[session-guard] release scheduling failed: ${String(e && e.message || e)}`)
+        }
+      }
+      return { action: 'hold', promise }
+    }
+
+    // error 模式（或 deferredResume=false）：记延后 + 抛可识别的错误
+    counters.error += 1
+    deferrals.remember(sessionId, info)
+    // 抛错同样在 user/message 落库之前结束这一步 → 已 claim 的输入也必须还回队列
+    restoreUncommitted(sessionId, 'deferred-error')
+    // 互斥铁律只约束 hold 路径；error 路径回合立刻结束，调门控是安全的。
+    if (gate && typeof gate.stopNextTurn === 'function') {
+      try {
+        const r = gate.stopNextTurn(sessionId, { mode: cfg.pauseMode, reason: cfg.pauseReason })
+        if (r && typeof r.then === 'function') {
+          r.then(undefined, (e) => logger?.warn?.(`[session-guard] stopNextTurn failed: ${String(e && e.message || e)}`))
+        }
+      } catch (e) {
+        logger?.warn?.(`[session-guard] stopNextTurn threw: ${String(e && e.message || e)}`)
+      }
+    }
+    logger?.info?.(`[session-guard] peak + official "${info.provider}/${info.model}" — deferring ${sessionId} with error (mode=${mode}, resume=${resume})`)
+    const detail = resume
+      ? `peak hours: ${info.provider}/${info.model} deferred to off-peak`
+      : `peak hours: ${info.provider}/${info.model} deferred; auto-resume disabled`
+    return { action: 'error', error: new PeakDeferredError(detail, { sessionId, ...info, config: undefined }) }
+  }
+
+  /** 一次 waterfall 调用。 */
+  async function handle(payload, next) {
+    const config = await next()
+    let decision
+    try {
+      decision = decide(payload, config)
+    } catch (e) {
+      // 判定异常 → fail-open 放行；但自己的延后错误必须抛出
+      if (e && e.code === 'PEAK_DEFERRED') throw e
+      counters.failOpen += 1
+      logger?.warn?.(`[session-guard] request guard failed open: ${String(e && e.message || e)}`)
+      return config
+    }
+    if (decision.action === 'pass') {
+      counters.pass += 1
+      return config
+    }
+    if (decision.action === 'error') throw decision.error
+    // hold：挂起 promise 的 resolve 值就是原 config（字段未被篡改）
+    return decision.promise
+  }
+
+  /** 注册 waterfall 监听；返回 disposer（同时释放全部挂起，避免 promise 泄漏）。 */
+  function install() {
+    if (!ctx || typeof ctx.on !== 'function') return () => {}
+    // `prepend`：本守卫必须是最外层。hold 放行时我们按新选择重路由 config —— 若宿主
+    // `installModelSelection` 的 `agent/request` 监听套在我们外面，它会用
+    // `selection.assembled`（组装期快照，滞后一步）覆盖掉重路由结果，等于没重路由。
+    // 附带好处：`next()` 拿到的也一定是宿主链路应用完选择后的 config，判定不会读到种子路由。
+    const off = ctx.on('agent/request', (payload, next) => handle(payload, next), { prepend: true })
+    return () => {
+      if (typeof off === 'function') off()
+      try {
+        deferrals.rejectAll('guard-disposed')
+      } catch {
+        /* 释放失败不阻断卸载 */
+      }
+    }
+  }
+
+  return { install, handle, decide, stats: () => ({ ...counters }) }
+}
