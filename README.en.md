@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./assets/dsh-offpeak-hero.png" alt="dsh-offpeak — Selective Control. Continuous Workflow." width="100%">
+</p>
+
 # dsh-offpeak
 
 A DSH (DeepSeek Harness) host plugin that keeps peak-hour usage under control: it closes the session gate before a peak-hour request goes out, holds only the requests whose **target is official or explicitly listed**, lets everything else run, and gives a single session a time-boxed "free run" exemption.

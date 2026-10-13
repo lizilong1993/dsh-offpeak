@@ -36,6 +36,7 @@
     "src/",
     "lib/",
     "config/",
+    "assets/",
     "cordis.patch.yml",
     "dsh.plugin.json",
     "README.md",

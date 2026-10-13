@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./assets/dsh-offpeak-hero.png" alt="dsh-offpeak — 该停的停，该跑的跑 / Selective Control. Continuous Workflow." width="100%">
+</p>
+
 # dsh-offpeak
 
 一个 DSH（DeepSeek Harness）宿主插件：用来自动管理高峰期的会话与请求 —— 在高峰请求真正发出**之前**拉门、只拦**目标为官方源或显式列出的模型**的请求、其余照常跑，并支持给单个会话排一段时间「畅跑」豁免。
