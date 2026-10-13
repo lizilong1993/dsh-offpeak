@@ -51,7 +51,9 @@ export function dshHomeDir(env = process.env) {
 }
 
 /**
- * 候选配置路径（按优先级）：新名各层优先，其后是旧名的对应层（兼容 v3.1.6 之前的安装）。
+ * 候选配置路径（按优先级）：**逐层**先新名后旧名 —— 层次优先于名字，否则「包内自带的新名文件」
+ * 会盖过「用户目录里的旧名文件」（v3.1.6 迁移期实测踩到：老用户的 `session-guard.json` 被包内
+ * `offpeak.json` 顶掉）。
  * @param {{env?:object, cwd?:string, pluginDir?:string}} [deps]
  * @returns {string[]} 绝对/相对路径列表（可能不存在）
  */
@@ -61,8 +63,10 @@ export function candidateConfigPaths({ env = process.env, cwd = process.cwd(), p
   if (typeof explicit === 'string' && explicit !== '') out.push(explicit)
   const dirs = [dshHomeDir(env), cwd]
   if (typeof pluginDir === 'string' && pluginDir !== '') dirs.push(pluginDir)
-  for (const dir of dirs) out.push(join(dir, CONFIG_DIR_NAME, CONFIG_FILE_NAME))
-  for (const dir of dirs) out.push(join(dir, CONFIG_DIR_NAME, LEGACY_CONFIG_FILE_NAME))
+  for (const dir of dirs) {
+    out.push(join(dir, CONFIG_DIR_NAME, CONFIG_FILE_NAME))
+    out.push(join(dir, CONFIG_DIR_NAME, LEGACY_CONFIG_FILE_NAME))
+  }
   return out
 }
 
