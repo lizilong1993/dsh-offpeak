@@ -1,9 +1,9 @@
 /**
- * dsh-session-guard — 每会话持久化状态存储（学 dsh-task-control 的独立存储模式，D4）。
+ * dsh-offpeak — 每会话持久化状态存储（学 dsh-task-control 的独立存储模式，D4）。
  *
  * 暂停/锁定状态不写 session log（harness 持久化 reader 只认已知事件类型），
- * 改为插件自有 JSON 文件：`$DSH_HOME/.dsh/session-guard/<sessionId>.json`
- * （可用 DSH_SESSION_GUARD_STATE_DIR 覆盖根目录）。原子写：tmp + rename。
+ * 改为插件自有 JSON 文件：`$DSH_HOME/.dsh/offpeak/<sessionId>.json`
+ * （可用 DSH_OFFPEAK_STATE_DIR 覆盖根目录）。原子写：tmp + rename。
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -11,8 +11,8 @@ import { dirname, join } from 'node:path'
 /** 状态根目录。 */
 export function storeRoot() {
   return (
-    process.env.DSH_SESSION_GUARD_STATE_DIR ||
-    join(process.env.DSH_HOME || process.env.HOME || process.cwd(), '.dsh', 'session-guard')
+    process.env.DSH_OFFPEAK_STATE_DIR ||
+    join(process.env.DSH_HOME || process.env.HOME || process.cwd(), '.dsh', 'offpeak')
   )
 }
 
@@ -61,7 +61,7 @@ export function createStore() {
         renameSync(tmp, f)
       } catch (e) {
         // 落盘失败仅影响重启恢复，内存态仍可用。
-        console.error(`[session-guard] store write failed: ${String(e && e.message || e)}`)
+        console.error(`[offpeak] store write failed: ${String(e && e.message || e)}`)
       }
     },
     /** 清除（解锁时）。 */

@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 后端自动重试（host side，D9）。
+ * dsh-offpeak — 后端自动重试（host side，D9）。
  *
  * 监听 session/event：turn/end 以 error / interrupted / max-tokens 结束时，
  * 分类瞬时/永久失败，自适应退避后自动 `agent.followup(retryText)` 续跑。
@@ -157,17 +157,17 @@ export function createRetry({ ctx, getSettings, isFrozen, send }) {
         } else {
           // 与 autoresume 同构：直接构造 plugin-source 消息，避免运行时依赖。
           agent.followup({
-            id: `session-guard-retry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            id: `offpeak-retry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             role: 'user',
             content: [{ type: 'text', text }],
-            source: { kind: 'plugin', plugin: 'session-guard', form: 'notice' },
+            source: { kind: 'plugin', plugin: 'offpeak', form: 'notice' },
           })
         }
         s.lastAttemptAt = Date.now()
         s.consecutive += 1
-        ctx.logger?.info?.(`[session-guard] auto-retry ${sessionId} (${String(reason && reason.kind)}), #${s.consecutive}`)
+        ctx.logger?.info?.(`[offpeak] auto-retry ${sessionId} (${String(reason && reason.kind)}), #${s.consecutive}`)
       } catch (e) {
-        ctx.logger?.warn?.(`[session-guard] auto-retry send failed: ${String(e && e.message || e)}`)
+        ctx.logger?.warn?.(`[offpeak] auto-retry send failed: ${String(e && e.message || e)}`)
       }
     }, grace)
     // 会话对象上的清理钩子（若宿主提供）。
@@ -215,7 +215,7 @@ export function createRetry({ ctx, getSettings, isFrozen, send }) {
     try {
       onEvent(session, event)
     } catch (e) {
-      ctx.logger?.warn?.(`[session-guard] retry event failed: ${String(e && e.message || e)}`)
+      ctx.logger?.warn?.(`[offpeak] retry event failed: ${String(e && e.message || e)}`)
     }
   })
 

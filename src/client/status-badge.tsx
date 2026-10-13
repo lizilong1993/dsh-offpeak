@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 状态徽标（**徽标即按钮**，fail-open）。
+ * dsh-offpeak — 状态徽标（**徽标即按钮**，fail-open）。
  *
  * 轮询 host 的 `/session-guard/status`（全局阶段 + 拦截列表规模）与
  * `/session-guard/state`（本会话畅跑任务），显示四态文案（v3.1.6）：

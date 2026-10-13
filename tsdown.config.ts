@@ -1,15 +1,14 @@
 /**
- * dsh-session-guard 客户端 bundle 构建（tsdown）。
+ * dsh-offpeak 客户端 bundle 构建（tsdown）。
  *
  * 仿 deepseek-harness/packages/client/tsdown.client.ts 语义：
  * src/client/index.ts -> lib/client.js（CJS，browser），带 __ModuleLoader__.load
- * 闭包工厂 banner/footer（与 input-traffic 同构，dsh-client-modules 在
- * /plugins/dsh-session-guard/client.js 提供）。react 与 dsh-client-* 为平台外部模块，
+ * 闭包工厂 banner/footer（与 input-traffic 同构）。react 与 dsh-client-* 为平台外部模块，
  * 由 dsh 共享模块表提供，禁止打进 bundle。
  */
 import { fileURLToPath } from 'node:url'
 
-const PLUGIN_ID = 'dsh-session-guard'
+const PLUGIN_ID = 'dsh-offpeak'
 
 /** dsh 共享给浏览器 bundle 的平台模块（external，不打包）。 */
 const PLATFORM_MODULES = [

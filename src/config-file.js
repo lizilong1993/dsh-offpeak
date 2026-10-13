@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — `config/session-guard.json` 配置加载（v0.3.0）。
+ * dsh-offpeak — `config/offpeak.json` 配置加载（v0.3.0）。
  *
  * 用户只改这一个 JSON 文件即可调整：peak 时间 / 提前提醒时间 / timeout / 默认动作 /
  * 时区 / 周末定义。DSH 原生没有「按插件读配置文件」的机制（插件配置走 cordis
@@ -7,10 +7,10 @@
  * 任何读/解析失败都收集到 `errors` 里，调用方照常跑默认配置（fail-open）。
  *
  * ── 搜索顺序（先命中先用）──────────────────────────────────────────────
- *   1. `$DSH_SESSION_GUARD_CONFIG`           显式指定文件（便于测试 / 多环境）
- *   2. `$DSH_HOME/config/session-guard.json` 用户级（正常使用改这里）
- *   3. `<cwd>/config/session-guard.json`     项目级
- *   4. `<plugin>/config/session-guard.json`  插件自带默认（随包发布）
+ *   1. `$DSH_OFFPEAK_CONFIG`           显式指定文件（便于测试 / 多环境）
+ *   2. `$DSH_HOME/config/offpeak.json` 用户级（正常使用改这里）
+ *   3. `<cwd>/config/offpeak.json`     项目级
+ *   4. `<plugin>/config/offpeak.json`  插件自带默认（随包发布）
  *
  * ── 与 cordis settings 的关系 ───────────────────────────────────────────
  * 文件值作为 settings 命名空间的 **base（默认层）**，设置面板里的用户覆盖仍然优先。
@@ -34,12 +34,6 @@ import { BUILTIN_OFFICIAL_MODEL_PATTERNS } from './provider.js'
 /** 配置文件基名。 */
 export const CONFIG_FILE_NAME = 'offpeak.json'
 
-/**
- * 旧基名（v3.1.6 之前叫 `session-guard.json`）：新名找不到时**继续读它**，
- * 这样从 dsh-session-guard 升级过来的用户不必搬文件；写侧也优先写已存在的那个文件。
- */
-export const LEGACY_CONFIG_FILE_NAME = 'session-guard.json'
-
 /** 配置目录名。 */
 export const CONFIG_DIR_NAME = 'config'
 
@@ -51,22 +45,17 @@ export function dshHomeDir(env = process.env) {
 }
 
 /**
- * 候选配置路径（按优先级）：**逐层**先新名后旧名 —— 层次优先于名字，否则「包内自带的新名文件」
- * 会盖过「用户目录里的旧名文件」（v3.1.6 迁移期实测踩到：老用户的 `session-guard.json` 被包内
- * `offpeak.json` 顶掉）。
+ * 候选配置路径（按优先级）。
  * @param {{env?:object, cwd?:string, pluginDir?:string}} [deps]
  * @returns {string[]} 绝对/相对路径列表（可能不存在）
  */
 export function candidateConfigPaths({ env = process.env, cwd = process.cwd(), pluginDir } = {}) {
   const out = []
-  const explicit = env.DSH_SESSION_GUARD_CONFIG
+  const explicit = env.DSH_OFFPEAK_CONFIG
   if (typeof explicit === 'string' && explicit !== '') out.push(explicit)
   const dirs = [dshHomeDir(env), cwd]
   if (typeof pluginDir === 'string' && pluginDir !== '') dirs.push(pluginDir)
-  for (const dir of dirs) {
-    out.push(join(dir, CONFIG_DIR_NAME, CONFIG_FILE_NAME))
-    out.push(join(dir, CONFIG_DIR_NAME, LEGACY_CONFIG_FILE_NAME))
-  }
+  for (const dir of dirs) out.push(join(dir, CONFIG_DIR_NAME, CONFIG_FILE_NAME))
   return out
 }
 
@@ -278,7 +267,7 @@ function validPatterns(list, field, errors) {
 }
 
 /**
- * 把 `config/session-guard.json` 的形态转成插件内部的**扁平设置形态**
+ * 把 `config/offpeak.json` 的形态转成插件内部的**扁平设置形态**
  * （可直接作为 cordis settings 的 base 层）。
  *
  * 只产出 JSON 里**实际出现**的键，未出现的键交给 DEFAULT_SETTINGS 兜底。
@@ -399,8 +388,8 @@ export function loadConfigFile({ env = process.env, cwd = process.cwd(), pluginD
  * 是本线既有的用户可编辑面（也是 `loadConfigFile` 的默认层），写完立刻 `reloadConfig` 生效。
  *
  * 安全语义（与读取侧同一套「绝不静默毁配置」风格）：
- * - 目标文件 = 已存在的候选（`$DSH_SESSION_GUARD_CONFIG` → `$DSH_HOME/config` → `<cwd>/config`
- *   → 包内），都不存在则**新建** `$DSH_HOME/config/session-guard.json`；
+ * - 目标文件 = 已存在的候选（`$DSH_OFFPEAK_CONFIG` → `$DSH_HOME/config` → `<cwd>/config`
+ *   → 包内），都不存在则**新建** `$DSH_HOME/config/offpeak.json`；
  * - 只改这一个键，**保留文件里其它键**与未知键；
  * - 现有文件读不出 / JSON 坏 → **拒绝写入**并报错（绝不覆盖用户内容）；
  * - 条目一律过一遍正则安全线（语法错 / 超长 / 灾难性回溯 → 拒绝）。

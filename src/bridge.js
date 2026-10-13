@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — sessionGuard 冗余端口（D5/D6/D8）。
+ * dsh-offpeak — sessionGuard 冗余端口（D5/D6/D8）。
  *
  * `ctx.provide('sessionGuard', service)`：
  * - stopNextTurn / resume：会话门（透传 taskControl，或回退锁队列）。

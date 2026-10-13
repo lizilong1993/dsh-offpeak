@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 请求级守卫（`agent/request` waterfall，host）。
+ * dsh-offpeak — 请求级守卫（`agent/request` waterfall，host）。
  *
  * 为什么需要它（findings F6）：现有 tick 只在 `NORMAL → PAUSED_PEAK` 跳变时处理
  * `status === 'running'` 的会话，入峰后新启动的会话、以及入峰后切到官方源的会话
@@ -101,7 +101,7 @@ export function createRequestGuard({
     try {
       restoreInput(sessionId, reason)
     } catch (e) {
-      logger?.warn?.(`[session-guard] restoring uncommitted input failed for ${sessionId}: ${String((e && e.message) || e)}`)
+      logger?.warn?.(`[offpeak] restoring uncommitted input failed for ${sessionId}: ${String((e && e.message) || e)}`)
     }
   }
 
@@ -113,7 +113,7 @@ export function createRequestGuard({
     const agent = payload && payload.agent
     const sessionId = String((agent && agent.id) ?? '')
     if (sessionId === '') {
-      logger?.warn?.('[session-guard] agent/request without agent.id — provider guard skipped')
+      logger?.warn?.('[offpeak] agent/request without agent.id — provider guard skipped')
       counters.failOpen += 1
       return { action: 'pass', why: 'no-session-id' }
     }
@@ -163,7 +163,7 @@ export function createRequestGuard({
     // 无论它跑在哪个 provider 上（中转/本地源同样吃官方计费）。
     const cls = directory.classify(config && config.provider, config && config.model)
     if (!cls.official) {
-      logger?.info?.(`[session-guard] peak but target "${String(config && config.provider)}/${String(config && config.model)}" is not official (matchedBy=${cls.matchedBy}) — pass`)
+      logger?.info?.(`[offpeak] peak but target "${String(config && config.provider)}/${String(config && config.model)}" is not official (matchedBy=${cls.matchedBy}) — pass`)
       return { action: 'pass', why: 'not-official' }
     }
 
@@ -179,7 +179,7 @@ export function createRequestGuard({
     // 退峰不自动续跑：hold 也无法自动放行 → 直接转 error（避免无限挂起）
     if (mode === 'hold' && resume) {
       counters.hold += 1
-      logger?.info?.(`[session-guard] peak + official "${info.provider}/${info.model}" — holding request of ${sessionId} (matchedBy=${cls.matchedBy})`)
+      logger?.info?.(`[offpeak] peak + official "${info.provider}/${info.model}" — holding request of ${sessionId} (matchedBy=${cls.matchedBy})`)
       const promise = deferrals.hold(
         sessionId,
         // onReject：abort / 超限 / 顶替 / 卸载时先把未落库输入还回队列（否则用户点停止即丢输入）
@@ -190,7 +190,7 @@ export function createRequestGuard({
         try {
           scheduleRelease()
         } catch (e) {
-          logger?.warn?.(`[session-guard] release scheduling failed: ${String(e && e.message || e)}`)
+          logger?.warn?.(`[offpeak] release scheduling failed: ${String(e && e.message || e)}`)
         }
       }
       return { action: 'hold', promise }
@@ -206,13 +206,13 @@ export function createRequestGuard({
       try {
         const r = gate.stopNextTurn(sessionId, { mode: cfg.pauseMode, reason: cfg.pauseReason })
         if (r && typeof r.then === 'function') {
-          r.then(undefined, (e) => logger?.warn?.(`[session-guard] stopNextTurn failed: ${String(e && e.message || e)}`))
+          r.then(undefined, (e) => logger?.warn?.(`[offpeak] stopNextTurn failed: ${String(e && e.message || e)}`))
         }
       } catch (e) {
-        logger?.warn?.(`[session-guard] stopNextTurn threw: ${String(e && e.message || e)}`)
+        logger?.warn?.(`[offpeak] stopNextTurn threw: ${String(e && e.message || e)}`)
       }
     }
-    logger?.info?.(`[session-guard] peak + official "${info.provider}/${info.model}" — deferring ${sessionId} with error (mode=${mode}, resume=${resume})`)
+    logger?.info?.(`[offpeak] peak + official "${info.provider}/${info.model}" — deferring ${sessionId} with error (mode=${mode}, resume=${resume})`)
     const detail = resume
       ? `peak hours: ${info.provider}/${info.model} deferred to off-peak`
       : `peak hours: ${info.provider}/${info.model} deferred; auto-resume disabled`
@@ -229,7 +229,7 @@ export function createRequestGuard({
       // 判定异常 → fail-open 放行；但自己的延后错误必须抛出
       if (e && e.code === 'PEAK_DEFERRED') throw e
       counters.failOpen += 1
-      logger?.warn?.(`[session-guard] request guard failed open: ${String(e && e.message || e)}`)
+      logger?.warn?.(`[offpeak] request guard failed open: ${String(e && e.message || e)}`)
       return config
     }
     if (decision.action === 'pass') {

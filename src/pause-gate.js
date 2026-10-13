@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 自研会话门引擎（脱离 dsh-task-control，全量移植）。
+ * dsh-offpeak — 自研会话门引擎（脱离 dsh-task-control，全量移植）。
  *
  * 真实锁定「session 推进」：复用 dsh runtime 自身的原语，不依赖任何外部会话门：
  * - `agent.cancel({ kind:'user' }, { keepInbox:true })` —— 停住当前回合（中断推理/在途工具）。
@@ -51,7 +51,7 @@ export function createPluginUserMessage({ content, source }) {
   const id =
     cryptoObj && typeof cryptoObj.randomUUID === 'function'
       ? cryptoObj.randomUUID()
-      : `session-guard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      : `offpeak-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   return { id, role: 'user', content, source }
 }
 
@@ -78,7 +78,7 @@ export function enqueueFollowup(agent, message, ctx) {
     return true
   }
   try {
-    ctx?.logger?.warn?.('[session-guard] agent has no followup/send; resume message dropped')
+    ctx?.logger?.warn?.('[offpeak] agent has no followup/send; resume message dropped')
   } catch {
     /* logger 不可用时静默 */
   }
@@ -107,7 +107,7 @@ export function createPauseGate({ ctx, pauseStore, pluginId = 'offpeak', makeFol
     try {
       stepGate.release(sessionId, reason)
     } catch (e) {
-      ctx?.logger?.warn?.('[session-guard] step gate release failed: ' + String(e))
+      ctx?.logger?.warn?.('[offpeak] step gate release failed: ' + String(e))
     }
   }
 
@@ -270,7 +270,7 @@ export function createPauseGate({ ctx, pauseStore, pluginId = 'offpeak', makeFol
         goals.pause(agent, { id: goal.id, revision: goal.revision })
       }
     } catch (e) {
-      ctx?.logger?.warn?.('[session-guard] goal pause failed: ' + String(e))
+      ctx?.logger?.warn?.('[offpeak] goal pause failed: ' + String(e))
     }
   }
 
@@ -459,7 +459,7 @@ export function createPauseGate({ ctx, pauseStore, pluginId = 'offpeak', makeFol
         }
         applyPauseNow(sessionId, resumeContent, { forced: false, interruptedTool: null }, deferredTools, pausedReason)
       } catch (e) {
-        ctx?.logger?.warn?.('[session-guard] deferred pause failed: ' + String(e))
+        ctx?.logger?.warn?.('[offpeak] deferred pause failed: ' + String(e))
         state.pendingPause.delete(sessionId)
       }
     })

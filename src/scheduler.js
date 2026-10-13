@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 纯状态机（可单测，零依赖）。
+ * dsh-offpeak — 纯状态机（可单测，零依赖）。
  *
  * 状态：NORMAL ↔ PAUSED_PEAK。
  * 副作用（暂停/恢复具体会话）由 host 的 tick 执行，这里只做判定与迁移检测。

@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 会话门驱动（D3/D5/D6，自研真实锁定）。
+ * dsh-offpeak — 会话门驱动（D3/D5/D6，自研真实锁定）。
  *
  * **主路径**（替换 dsh-task-control）：经自研 `pauseGate` 真暂停 session 推进——
  * `pauseGate.pause(id,{mode,reason})` 调用 agent.cancel / goals.pause / session/event

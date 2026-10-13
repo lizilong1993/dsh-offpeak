@@ -1,12 +1,12 @@
 /**
- * dsh-session-guard — 自研会话门暂停状态持久化（脱离 dsh-task-control）。
+ * dsh-offpeak — 自研会话门暂停状态持久化（脱离 dsh-task-control）。
  *
  * 与 queueLock（src/store.js，队列锁）分离：这里是「真暂停」的持久化快照，
  * 仿 task-control 的状态模型，但独立子目录 /pause 避免与队列锁文件互相污染。
  *
  * 暂停/锁定状态仍**不写 session log**（harness 持久化 reader 只有已知事件集，
- * 自定义 `session-guard/*` 事件会导致重启后会话无法加载），走插件自有 JSON 文件：
- * `$DSH_HOME/.dsh/session-guard/pause/<sessionId>.json`（`DSH_SESSION_GUARD_PAUSE_DIR`
+ * 自定义事件会导致重启后会话无法加载），走插件自有 JSON 文件：
+ * `$DSH_HOME/.dsh/offpeak/pause/<sessionId>.json`（`DSH_OFFPEAK_PAUSE_DIR`
  * 可覆盖根目录）。原子写：tmp + rename。
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -21,7 +21,7 @@ export function encodeSessionId(id) {
 /** 自研暂停状态根目录（独立于队列锁）。 */
 export function pauseStateRoot() {
   return (
-    process.env.DSH_SESSION_GUARD_PAUSE_DIR ||
+    process.env.DSH_OFFPEAK_PAUSE_DIR ||
     join(storeRoot(), 'pause')
   )
 }
@@ -81,7 +81,7 @@ export function createPauseStore() {
         renameSync(tmp, f)
       } catch (e) {
         // 落盘失败仅影响重启恢复，内存态仍可用。
-        console.error(`[session-guard] pause store write failed: ${String(e && e.message || e)}`)
+        console.error(`[offpeak] pause store write failed: ${String(e && e.message || e)}`)
       }
     },
     /** 清除（resume/cancel 后）。 */

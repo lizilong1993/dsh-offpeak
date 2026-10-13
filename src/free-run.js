@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 畅跑（free-run）状态：单会话限时无视峰谷。
+ * dsh-offpeak — 畅跑（free-run）状态：单会话限时无视峰谷。
  *
  * 语义（用户定案）：
  * - **单会话**：只有排定畅跑的那个会话被豁免，其他会话照常按峰谷暂停。
@@ -49,7 +49,7 @@ export function encodeFreeRunId(id) {
 
 /** 畅跑状态根目录（独立于队列锁与暂停态）。 */
 export function freeRunRoot() {
-  return process.env.DSH_SESSION_GUARD_FREE_RUN_DIR || join(storeRoot(), 'free-run')
+  return process.env.DSH_OFFPEAK_FREE_RUN_DIR || join(storeRoot(), 'free-run')
 }
 
 /** 每会话畅跑文件路径。 */
@@ -335,7 +335,7 @@ export function createFreeRunStore({ dir } = {}) {
         renameSync(tmp, f)
       } catch (e) {
         // 落盘失败仅影响重启恢复，内存态仍可用。
-        console.error(`[session-guard] free-run store write failed: ${String((e && e.message) || e)}`)
+        console.error(`[offpeak] free-run store write failed: ${String((e && e.message) || e)}`)
       }
       return next
     },

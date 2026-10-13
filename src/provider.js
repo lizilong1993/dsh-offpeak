@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 官方 provider 判定（纯函数，零依赖，可单测）。
+ * dsh-offpeak — 官方 provider 判定（纯函数，零依赖，可单测）。
  *
  * 目标：判断「这次请求真正要去的路由」是不是 DeepSeek 官方源。
  *

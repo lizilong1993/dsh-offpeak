@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 设置 schema（0.1.7 线：**声明式 volatile 设置**）。
+ * dsh-offpeak — 设置 schema（0.1.7 线：**声明式 volatile 设置**）。
  *
  * **本线的 `settings` 服务仍在**（类 `SettingsForms`，有 `describe()` / `configure()`），
  * 但 `dsh-settings` **已没有 `register()` 与 `get()`** —— 这（而非「服务缺席」）才是设置面
@@ -19,7 +19,7 @@
  * - `DEFAULT_SETTINGS`：核心逻辑依赖的默认值；
  * - `SettingsSchema`：字段级 `.default()` + `.volatile()`；
  * - `effectiveDefaults` / `canonicalSettings` / `settingsBaseFor`：把
- *   `config/session-guard.json` 的值并进默认层并用 schema 校验（坏值回退内置默认，
+ *   `config/offpeak.json` 的值并进默认层并用 schema 校验（坏值回退内置默认，
  *   绝不因配置文件写错而让守卫静默失效）。
  */
 import z from '@deepseek-ai/schemastery'
@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   weekendDays: [...DEFAULT_WEEKEND_DAYS], // 哪几天算周末（spec §一 weekendPolicy.days）
   weekendPolicyMode: WEEKEND_MODE_OFF_PEAK, // 周末策略模式（目前仅 offPeak）
   // 峰窗口：name 仅用于展示/日志，days 省略或为空 = 每天生效（spec §六.1）。
-  // v0.3.0 起不再硬编码——全部来自 config/session-guard.json。
+  // v0.3.0 起不再硬编码——全部来自 config/offpeak.json。
   peakWindows: [
     { name: 'morning', start: '09:00', end: '12:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },
     { name: 'afternoon', start: '14:00', end: '18:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'] },

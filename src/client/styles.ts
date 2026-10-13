@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 客户端样式（与 composer 右侧 input-traffic 冻结按钮同一视觉语言）。
+ * dsh-offpeak — 客户端样式（与 composer 右侧 input-traffic 冻结按钮同一视觉语言）。
  *
  * 为什么注入 `<style>` 而不是 CSS Modules：本插件的 tsdown 配置没有 CSS Modules 管线
  * （input-traffic 有），而 settings-card 已经用 `<style data-plugin-css>` 的既有约定。

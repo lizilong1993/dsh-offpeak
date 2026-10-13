@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 浏览器 half。
+ * dsh-offpeak — 浏览器 half。
  *
  * 职责（全部 fail-open，D8）：
  * - 在 composer 输入区右侧注册「畅跑」按钮与**纯展示**状态徽标（高峰/谷时/周末）；

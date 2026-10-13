@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 「高峰拦截列表」面板（状态徽标展开区）。
+ * dsh-offpeak — 「高峰拦截列表」面板（状态徽标展开区）。
  *
  * 形态（v3.1.6）：
  *   - 列表 = DSH 当前全部模型（`GET /session-guard/models`：各路由自报 + 本插件观察到的真实目标），
@@ -7,7 +7,7 @@
  *   - 顶部**关键词过滤框** + **全选 / 取消全选**（只作用于当前过滤结果）+ **刷新**（重拉模型列表）
  *     + **热重载**（先让 host 重读配置文件，再拉一次）；
  *   - **已拦截**：勾选即该模型名进列表（`POST /session-guard/rpc {action:'setModelPatterns'}` →
- *     写 `config/session-guard.json` 并立即 reload；0.1.7 客户端没有 settingsScope，这是本线唯一
+ *     写 `config/offpeak.json` 并立即 reload；0.1.7 客户端没有 settingsScope，这是本线唯一
  *     写入口）。列表项**精确匹配模型名**（大小写不敏感），没有关键字/正则的批量覆盖，
  *     因此每一项都能用它的 `×` **撤销**。
  *

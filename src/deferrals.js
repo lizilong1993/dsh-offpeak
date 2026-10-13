@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 延后登记表（host，进程内）。
+ * dsh-offpeak — 延后登记表（host，进程内）。
  *
  * 两类记录：
  * - **挂起（hold）**：请求被挂在 `agent/request` 上，promise 待退峰 resolve。

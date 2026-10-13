@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — host half。
+ * dsh-offpeak — host half。
  *
  * 高峰自动会话门：
  * - 每 30s tick 判定状态（NORMAL ↔ PAUSED_PEAK），纯状态机见 scheduler.js。
@@ -7,7 +7,7 @@
  * - 退峰/周末：放行 step 门 + 恢复本插件暂停的会话。
  * - **畅跑（v0.3.0）**：单会话限时无视峰谷，见 src/free-run.js。
  * - `ctx.provide('sessionGuard')` 冗余端口，input-traffic 冻结按钮透传接入。
- * - 设置：设置 → 插件 → session-guard 子板块，简单开关。config/session-guard.json 为默认层。
+ * - 设置：设置 → 插件 → offpeak 子板块，简单开关。config/offpeak.json 为默认层。
  */
 import { computeState, transition } from './scheduler.js'
 import { MODES, createTimePolicyResolver, stableStringify } from './time-policy.js'
@@ -52,7 +52,7 @@ export { NS, DEFAULT_SETTINGS }
 export { MODES } from './time-policy.js'
 export { FREE_RUN_STATES } from './free-run.js'
 
-/** 本插件包根目录（配置搜索顺序的最后兜底：随包发布的 config/session-guard.json）。 */
+/** 本插件包根目录（配置搜索顺序的最后兜底：随包发布的 config/offpeak.json）。 */
 const PLUGIN_DIR = fileURLToPath(new URL('..', import.meta.url))
 
 /**
@@ -110,7 +110,7 @@ export function apply(ctx, config = {}) {
     }
   }
 
-  // ── config/session-guard.json（v0.3.0）──
+  // ── config/offpeak.json（v0.3.0）──
   // 用户改这个文件即可调整 peak 时间 / step 门控超时 / 时区 / 周末定义；文件值是**默认层**。
   // 读取失败 / JSON 坏掉都不阻塞启动：收集 errors，回退内置默认（fail-open）。
   let configFile = loadConfigFile({ pluginDir: PLUGIN_DIR })
@@ -118,15 +118,15 @@ export function apply(ctx, config = {}) {
   function reloadConfigFile() {
     configFile = loadConfigFile({ pluginDir: PLUGIN_DIR })
     if (configFile.errors.length > 0) {
-      ctx.logger?.warn?.(`[session-guard] config file issues (${configFile.path}): ${configFile.errors.join('; ')}`)
+      ctx.logger?.warn?.(`[offpeak] config file issues (${configFile.path}): ${configFile.errors.join('; ')}`)
     }
     return configFile
   }
 
   if (configFile.path !== null) {
-    ctx.logger?.info?.(`[session-guard] config file: ${configFile.path}`)
+    ctx.logger?.info?.(`[offpeak] config file: ${configFile.path}`)
     if (configFile.errors.length > 0) {
-      ctx.logger?.warn?.(`[session-guard] config file issues: ${configFile.errors.join('; ')}`)
+      ctx.logger?.warn?.(`[offpeak] config file issues: ${configFile.errors.join('; ')}`)
     }
   }
 
@@ -148,7 +148,7 @@ export function apply(ctx, config = {}) {
       // 为什么必须这样：`Config = SettingsSchema` 的 28 个字段都是 `.volatile()`，
       // dsh 解析组合条目时会把**每个字段的默认值**都填上（实测 entryKeys 恒为 28 个）。
       // 若照单全收，`{ ...文件层, ...条目 }` 就等价于「条目默认值覆盖一切」——
-      // `config/session-guard.json` 里写什么都被静默盖掉，文件层形同虚设
+      // `config/offpeak.json` 里写什么都被静默盖掉，文件层形同虚设
       // （与上方注释承诺的「文件=默认层」矛盾；实测：写进文件的 officialProviders
       //  永远读不到，用户按文档配置后毫无效果）。
       if (stableStringify(v) === stableStringify(DEFAULT_SETTINGS[key])) continue
@@ -161,7 +161,7 @@ export function apply(ctx, config = {}) {
    * 读实时设置。
    *
    * 0.1.7 线的优先级（本线没有 settings 服务，因此不再有「settings 用户层」这一层）：
-   * - `config/session-guard.json` 的当前值 = **默认层**（改完文件 reload 即生效，无需重启）；
+   * - `config/offpeak.json` 的当前值 = **默认层**（改完文件 reload 即生效，无需重启）；
    * - dsh 设置表单（由 `Config` 的 volatile 字段自动生成）写回的组合条目 = **覆盖层**；
    * - 两者都没写的键用 `DEFAULT_SETTINGS` 兜底。
    *
@@ -371,7 +371,7 @@ export function apply(ctx, config = {}) {
           await gate.resume(sessionId, { choice: 'rerun', auto: true })
         }
       } catch (e) {
-        ctx.logger?.warn?.(`[session-guard] free-run release failed for ${sessionId}: ${String((e && e.message) || e)}`)
+        ctx.logger?.warn?.(`[offpeak] free-run release failed for ${sessionId}: ${String((e && e.message) || e)}`)
       }
       return
     }
@@ -396,7 +396,7 @@ export function apply(ctx, config = {}) {
         })
       }
     } catch (e) {
-      ctx.logger?.warn?.(`[session-guard] free-run suspend failed for ${sessionId}: ${String((e && e.message) || e)}`)
+      ctx.logger?.warn?.(`[offpeak] free-run suspend failed for ${sessionId}: ${String((e && e.message) || e)}`)
     }
   }
 
@@ -407,10 +407,10 @@ export function apply(ctx, config = {}) {
     const prev = freeRunActiveSeen.get(sessionId)
     freeRunActiveSeen.set(sessionId, nowActive)
     if (prev !== nowActive) {
-      ctx.logger?.info?.(`[session-guard] free-run ${nowActive ? 'on' : 'off'} for ${sessionId} (${why})`)
+      ctx.logger?.info?.(`[offpeak] free-run ${nowActive ? 'on' : 'off'} for ${sessionId} (${why})`)
       // 迁移是异步的（可能要 await gate.resume）；显式吞掉 rejection，绝不产生未处理拒绝。
       void applyFreeRunTransition(sessionId, nowActive).catch((e) => {
-        ctx.logger?.warn?.(`[session-guard] free-run transition failed for ${sessionId}: ${String((e && e.message) || e)}`)
+        ctx.logger?.warn?.(`[offpeak] free-run transition failed for ${sessionId}: ${String((e && e.message) || e)}`)
       })
     }
     scheduleFreeRunBoundary(sessionId)
@@ -498,27 +498,27 @@ export function apply(ctx, config = {}) {
       try {
         pauseGate.handleEvent(session, event)
       } catch (e) {
-        ctx.logger?.warn?.('[session-guard] session event handling failed: ' + String(e))
+        ctx.logger?.warn?.('[offpeak] session event handling failed: ' + String(e))
       }
       wiring.onSessionEvent(session, event)
-    }), 'session-guard: pause-gate events')
+    }), 'offpeak: pause-gate events')
   }
 
   // ── 请求级守卫（agent/request waterfall）──
   // 覆盖缺口：tick 只在状态跳变时处理 running 会话，入峰后新启动 / 中途切官方都会漏。
-  ctx.effect(() => wiring.installGuard(), 'session-guard: request guard')
+  ctx.effect(() => wiring.installGuard(), 'offpeak: request guard')
 
   // ── 「已 claim、未落库」输入批次追踪（agent/pre-step waterfall）──
   // 宿主 preStep() 先 inbox.claim()、user/message 才在请求通过后落库：hold 被 abort /
   // 超限 / 顶替（或 step 门被取消）时把那批输入还回队列，否则用户点停止就丢消息。
   // 必须排在 step 门之前：注册顺序 = waterfall 外层优先，门挂起时我们也要先拿到批次。
-  ctx.effect(() => wiring.installClaimTracker(), 'session-guard: claim tracker')
+  ctx.effect(() => wiring.installClaimTracker(), 'offpeak: claim tracker')
 
   // ── step 级门控（agent/pre-step waterfall，v0.2.0）──
   // 高峰 + 非周末 + 目标官方 → 在下一个 step 的模型请求前拉门；退峰原地续跑。
-  ctx.effect(() => wiring.installStepGuard(), 'session-guard: step guard')
+  ctx.effect(() => wiring.installStepGuard(), 'offpeak: step guard')
 
-  ctx.effect(() => () => wiring.dispose(), 'session-guard: wiring dispose')
+  ctx.effect(() => () => wiring.dispose(), 'offpeak: wiring dispose')
 
   // ── 手动会话门命令（/pause /resume /cancel，全量移植）──
   if (typeof ctx.commands?.register === 'function') {
@@ -583,7 +583,7 @@ export function apply(ctx, config = {}) {
   // ── 设置子板块 ──
   // 0.1.7：设置表单由 `Config`（= SettingsSchema 的 volatile 字段）自动生成，**无注册调用**；
   // 配置经 apply 的组合条目读取（readCfg → resolveEntryConfig），文件层由
-  // config/session-guard.json 提供（见上方 readCfg 的优先级说明）。
+  // config/offpeak.json 提供（见上方 readCfg 的优先级说明）。
 
   // ── 状态机驱动（30s tick）──
   // 入峰：只暂停「最近目标为官方或 unknown」的 running 会话（providerGuard 关闭时退回全部）；
@@ -614,7 +614,7 @@ export function apply(ctx, config = {}) {
         lastState = next
       }
     } catch (e) {
-      ctx.logger?.error?.(`[session-guard] tick failed: ${String(e && e.message || e)}`)
+      ctx.logger?.error?.(`[offpeak] tick failed: ${String(e && e.message || e)}`)
     }
   }
 
@@ -639,13 +639,13 @@ export function apply(ctx, config = {}) {
         syncFreeRun(id, 'tick')
       }
     } catch (e) {
-      ctx.logger?.warn?.(`[session-guard] free-run tick failed: ${String(e && e.message || e)}`)
+      ctx.logger?.warn?.(`[offpeak] free-run tick failed: ${String(e && e.message || e)}`)
     }
   }
 
-  ctx.effect(() => ctx.timer.interval(tick, 30_000), 'session-guard: tick')
-  ctx.effect(() => ctx.timer.interval(freeRunTick, 30_000), 'session-guard: free-run tick')
-  ctx.effect(() => () => { for (const id of [...freeRunTimers.keys()]) clearFreeRunTimer(id) }, 'session-guard: free-run timers')
+  ctx.effect(() => ctx.timer.interval(tick, 30_000), 'offpeak: tick')
+  ctx.effect(() => ctx.timer.interval(freeRunTick, 30_000), 'offpeak: free-run tick')
+  ctx.effect(() => () => { for (const id of [...freeRunTimers.keys()]) clearFreeRunTimer(id) }, 'offpeak: free-run timers')
   tick()
   restoreFreeRun()
 
@@ -868,7 +868,7 @@ export function apply(ctx, config = {}) {
                   timeoutMs: readCfg().stepGateTimeoutMs,
                   enabled: readCfg().stepLevelPause === true,
                 },
-                // v0.3.0：config/session-guard.json 诊断 + 畅跑状态计数
+                // v0.3.0：config/offpeak.json 诊断 + 畅跑状态计数
                 configFile: {
                   path: configFile.path,
                   candidates: configFile.candidates,
@@ -899,7 +899,7 @@ export function apply(ctx, config = {}) {
             const sessionId = String(parsed.sessionId ?? '')
             // 这个动作是插件级的，不需要 sessionId。
             if (action === 'reloadConfig') {
-              // 改完 config/session-guard.json 无需重启即可生效（设置面板覆盖仍优先）。
+              // 改完 config/offpeak.json 无需重启即可生效（设置面板覆盖仍优先）。
               const cfg = reloadConfigFile()
               return json(200, {
                 ok: true,
@@ -970,15 +970,15 @@ export function apply(ctx, config = {}) {
           }
           return json(404, { ok: false, error: `unknown ${method} ${url.pathname}` })
         } catch (e) {
-          ctx.logger?.error?.(`[session-guard] route error: ${String(e && e.message || e)}`)
+          ctx.logger?.error?.(`[offpeak] route error: ${String(e && e.message || e)}`)
           res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
           res.end(JSON.stringify({ ok: false, error: String(e && e.message || e) }))
         }
       },
       })
       } catch (e) {
-        ctx.logger?.error?.(`[session-guard] webServer.register failed (routes disabled): ${String(e && e.message || e)}`)
+        ctx.logger?.error?.(`[offpeak] webServer.register failed (routes disabled): ${String(e && e.message || e)}`)
       }
-    }, 'session-guard: routes')
+    }, 'offpeak: routes')
   }
 }

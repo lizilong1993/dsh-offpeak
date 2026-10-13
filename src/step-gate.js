@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — step 级门控（v0.2.0，`agent/pre-step` waterfall）。
+ * dsh-offpeak — step 级门控（v0.2.0，`agent/pre-step` waterfall）。
  *
  * 为什么需要它：turn 级暂停（pause-gate.js）只在安全边界停下整个回合，
  * 高峰切入时已经花掉当前 step 的 token。step 门控挂在 `agent/pre-step`，
@@ -116,14 +116,14 @@ export function createStepGate({
 
   const warn = (m) => {
     try {
-      logger?.warn?.(`[session-guard] ${m}`)
+      logger?.warn?.(`[offpeak] ${m}`)
     } catch {
       /* 日志失败不影响门控 */
     }
   }
   const info = (m) => {
     try {
-      logger?.info?.(`[session-guard] ${m}`)
+      logger?.info?.(`[offpeak] ${m}`)
     } catch {
       /* ignore */
     }

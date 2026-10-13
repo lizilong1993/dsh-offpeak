@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 端点目录（host 适配层，读上游只读信息，全部 fail-open）。
+ * dsh-offpeak — 端点目录（host 适配层，读上游只读信息，全部 fail-open）。
  *
  * 端点来源（见 findings F4）：
  *   1. `ctx.get('llm')` 懒取（**不进 inject**：llm 缺失时降级为纯 id 判定，保持 fail-open）；

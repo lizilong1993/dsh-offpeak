@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — `tool/result` 调用 id 的双形态读取（**零依赖**，可单测）。
+ * dsh-offpeak — `tool/result` 调用 id 的双形态读取（**零依赖**，可单测）。
  *
  * 为什么需要它：DSH 0.1.1-rc.2 与 0.1.2-rc.1 的 `session/event` 形状一致
  * （已逐行核对 `packages/session/session-persistence/src/coordinator.ts` 的

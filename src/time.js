@@ -1,10 +1,10 @@
 /**
- * dsh-session-guard — 时间原语（纯函数，零依赖，可单测）。
+ * dsh-offpeak — 时间原语（纯函数，零依赖，可单测）。
  *
  * 本模块只保留**底层原语**：窗口算术、周几、时区投影。
  * 峰谷**策略判定**（哪些窗口生效、周末怎么算、什么时候该暂停）已迁到
  * `src/time-policy.js` 的 `TimePolicyResolver`——v0.3.0 起全部由
- * `config/session-guard.json` 配置驱动，不再硬编码 09:00-12:00 / 14:00-18:00。
+ * `config/offpeak.json` 配置驱动，不再硬编码 09:00-12:00 / 14:00-18:00。
  *
  * 时区一律通过 `Intl.DateTimeFormat(timeZone)` 投影成墙钟分量，
  * 避免裸 `getUTCDay()` 导致跨时区边界错一天的 bug（D1）。

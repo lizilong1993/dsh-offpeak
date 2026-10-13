@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 接线层（host）：把纯逻辑模块装到 cordis 事件/服务上。
+ * dsh-offpeak — 接线层（host）：把纯逻辑模块装到 cordis 事件/服务上。
  *
  * 职责：
  * - 目标追踪：`session/event` 的 `request/header`（两版本）+ `model/selection`（0.1.2+）
@@ -46,7 +46,7 @@ export function createWiring({
   unrefTimers = true,
   isFreeRunActive,
 }) {
-  const warn = (m) => logger?.warn?.(`[session-guard] ${m}`)
+  const warn = (m) => logger?.warn?.(`[offpeak] ${m}`)
   const targets = createTargets()
   const directory = createProviderDirectory({ ctx, getSettings, warn })
   const deferrals = createDeferrals({
@@ -121,7 +121,7 @@ export function createWiring({
         warn(`restoring input for ${key} failed: ${String((e && e.message) || e)}`)
       }
     }
-    if (restored > 0) logger?.info?.(`[session-guard] deferred request ended (${reason}) — restored ${restored} uncommitted input message(s) for ${key}`)
+    if (restored > 0) logger?.info?.(`[offpeak] deferred request ended (${reason}) — restored ${restored} uncommitted input message(s) for ${key}`)
     return restored
   }
 
@@ -210,19 +210,19 @@ export function createWiring({
     const releasedHold = deferrals.release(sessionId, 'non-official', (config) => applyTarget(config, rec))
     if (releasedHold) {
       logger?.info?.(
-        `[session-guard] target switched to non-official "${rec.provider}/${rec.model}" (matchedBy=${cls.matchedBy}) — released held request of ${sessionId} (rerouted)`,
+        `[offpeak] target switched to non-official "${rec.provider}/${rec.model}" (matchedBy=${cls.matchedBy}) — released held request of ${sessionId} (rerouted)`,
       )
     }
     // step 门控：目标转非官方 → 放行被挂起的 step（step gate 自身按目标判定，无需 pausedByPeak）
     if (stepGate) {
       const r = stepGate.release(sessionId, 'non-official')
       if (r && r.released === true) {
-        logger?.info?.(`[session-guard] target switched to non-official "${rec.provider}" (matchedBy=${cls.matchedBy}) — releasing step gate for ${sessionId}`)
+        logger?.info?.(`[offpeak] target switched to non-official "${rec.provider}" (matchedBy=${cls.matchedBy}) — releasing step gate for ${sessionId}`)
       }
     }
     if (!pausedByPeak.has(sessionId)) return { releasedHold, resumed: false }
     pausedByPeak.delete(sessionId)
-    logger?.info?.(`[session-guard] target switched to non-official "${rec.provider}" (matchedBy=${cls.matchedBy}) — auto-resuming ${sessionId}`)
+    logger?.info?.(`[offpeak] target switched to non-official "${rec.provider}" (matchedBy=${cls.matchedBy}) — auto-resuming ${sessionId}`)
     queueMicrotask(() => {
       Promise.resolve(gate.resume(sessionId, { choice: 'rerun', auto: true })).catch((e) => {
         warn(`auto-resume failed for ${sessionId}: ${String(e && e.message || e)}`)
@@ -291,7 +291,7 @@ export function createWiring({
         warn(`stopNextTurn failed for ${id}: ${String(e && e.message || e)}`)
       }
     }
-    logger?.info?.(`[session-guard] peak entered — ${stepLevel ? 'step-level gate armed for' : 'paused'} ${paused.length} session(s): ${JSON.stringify(paused)}; skipped ${JSON.stringify(skipped)}`)
+    logger?.info?.(`[offpeak] peak entered — ${stepLevel ? 'step-level gate armed for' : 'paused'} ${paused.length} session(s): ${JSON.stringify(paused)}; skipped ${JSON.stringify(skipped)}`)
     return { paused, skipped }
   }
 
@@ -302,10 +302,10 @@ export function createWiring({
     if (!agent || agent.status !== 'idle') return false
     try {
       agent.followup({
-        id: `session-guard-deferred-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: `offpeak-deferred-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         role: 'user',
         content: [{ type: 'text', text }],
-        source: { kind: 'plugin', plugin: 'session-guard', form: 'notice' },
+        source: { kind: 'plugin', plugin: 'offpeak', form: 'notice' },
       })
       return true
     } catch (e) {
@@ -324,7 +324,7 @@ export function createWiring({
     if (stepGate) {
       const releasedSteps = stepGate.releaseAll('off-peak')
       stepGate.clearAllBypass()
-      if (releasedSteps.length > 0) logger?.info?.(`[session-guard] peak left — released ${releasedSteps.length} step gate(s): ${JSON.stringify(releasedSteps)}`)
+      if (releasedSteps.length > 0) logger?.info?.(`[offpeak] peak left — released ${releasedSteps.length} step gate(s): ${JSON.stringify(releasedSteps)}`)
     }
     // 1) 先取延后记录快照（releaseAll 会清空），再放行全部挂起。
     const deferredSnapshot = deferrals.deferredList()
@@ -340,12 +340,12 @@ export function createWiring({
         if (sendResume(rec.sessionId, text)) resumed.push(rec.sessionId)
       }
     } else {
-      logger?.info?.('[session-guard] deferredResume disabled — deferred sessions stay parked')
+      logger?.info?.('[offpeak] deferredResume disabled — deferred sessions stay parked')
     }
 
     // 3) 低谷自动恢复：关掉则保持暂停，需手动恢复。
     if (cfg.offPeakAutoResume === false) {
-      logger?.info?.(`[session-guard] off-peak auto-resume disabled — released ${released.length} held request(s), sessions stay paused`)
+      logger?.info?.(`[offpeak] off-peak auto-resume disabled — released ${released.length} held request(s), sessions stay paused`)
       return { released, resumed }
     }
     const agents = ctx && ctx.agents
@@ -361,7 +361,7 @@ export function createWiring({
       }
     }
     pausedByPeak.clear()
-    logger?.info?.(`[session-guard] peak left — released ${released.length} held request(s), resumed ${resumed.length} deferred session(s)`)
+    logger?.info?.(`[offpeak] peak left — released ${released.length} held request(s), resumed ${resumed.length} deferred session(s)`)
     return { released, resumed }
   }
 

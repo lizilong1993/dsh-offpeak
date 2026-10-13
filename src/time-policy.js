@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 可配置峰谷时间策略（TimePolicyResolver，纯函数，零依赖，可单测）。
+ * dsh-offpeak — 可配置峰谷时间策略（TimePolicyResolver，纯函数，零依赖，可单测）。
  *
  * 这是 v0.3.0 引入的**唯一权威时间判定**：`time.js` 保留为底层原语
  * （parseHHMM / inWindow / wallClock / isWeekend / localMidnight），其
@@ -30,7 +30,7 @@
  * ── 兼容 ────────────────────────────────────────────────────────────────
  * 同时接受旧形态（`peakWindows: [{start,end}]` + `weekendMode: true`）与新形态
  * （`peakPolicy.peakWindows[{name,start,end,days}]` + `weekendPolicy`），
- * 因此设置面板与 config/session-guard.json 可以混用。
+ * 因此设置面板与 config/offpeak.json 可以混用。
  */
 import { BILLING_TIMEZONE, localMidnight, parseHHMM, wallClock } from './time.js'
 
@@ -223,7 +223,7 @@ function pickTimeZone(value, fallback, label, errors) {
 
 /**
  * 归一化整份策略配置（新 `peakPolicy`/`weekendPolicy` 优先，旧扁平字段兜底）。
- * @param {object} config settings 形态或 config/session-guard.json 形态
+ * @param {object} config settings 形态或 config/offpeak.json 形态
  * @param {string[]} [errors] 收集非法配置说明
  * @returns {{enabled:boolean, timezone:string, peakTimezone:string, windows:Array, weekend:{enabled:boolean,days:number[],mode:string}}}
  */
@@ -312,7 +312,7 @@ function shiftWallDay(wc, deltaDays) {
 /**
  * 可配置峰谷时间策略解析器（spec §二 TimePolicyResolver）。
  *
- * @param {object} config settings 形态或 config/session-guard.json 形态
+ * @param {object} config settings 形态或 config/offpeak.json 形态
  * @param {{clock?:()=>Date, errors?:string[]}} [deps]
  */
 export function createTimePolicyResolver(config, deps = {}) {

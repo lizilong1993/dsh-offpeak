@@ -1,5 +1,5 @@
 /**
- * dsh-session-guard — 会话「最近一次真实目标」追踪（纯函数 + 小状态表）。
+ * dsh-offpeak — 会话「最近一次真实目标」追踪（纯函数 + 小状态表）。
  *
  * 主信号：`session/event` 的 `request/header`（**两个版本都有**，findings F5）。
  *   `session.append('request/header', { header, reason })`，`header.config.{provider,model}`
