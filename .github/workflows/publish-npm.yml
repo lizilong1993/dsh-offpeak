@@ -1,0 +1,102 @@
+# dsh-offpeak — publish to npm
+#
+# 触发：push 到 main、推 tag（v*）、手动 workflow_dispatch（可勾 dry_run 预演）。
+# 认证：仓库 secret `NPM_TOKEN`（Granular/Automation token，需允许 bypass 2FA），
+#       经 `NODE_AUTH_TOKEN` 交给 npm；registry 由 setup-node 的 registry-url 写进 .npmrc。
+# 权限：最小化 —— 只读 contents（不使用 provenance，故不需要 id-token: write）。
+# 行为：发布前校验「版本号未被占用」——已存在则只提示、不发布（重复推 main 不会失败）。
+name: publish-npm
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 只做 dry-run（构建 + 校验，不真正发布）
+        type: boolean
+        default: false
+
+# 同一时刻只允许一次发布（npm 侧同一包名并发发布会互相打架）
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: https://registry.npmjs.org
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 打 tag 时也要拿到 tag 指向的提交；默认 fetch-depth: 1 即可发布用
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: ${{ env.REGISTRY }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Read version and check whether it is already on npm
+        id: version
+        run: |
+          set -euo pipefail
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npm view "$NAME@$VERSION" version --registry "$REGISTRY" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$NAME@$VERSION 已存在于 npm —— 跳过本次发布（改 package.json 的 version 后再推）。"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "$NAME@$VERSION 尚未发布，将继续。"
+          fi
+
+      - name: Tag must match the package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME 与 package.json 版本 $VERSION 不一致"
+            exit 1
+          fi
+
+      - name: Publish
+        if: steps.version.outputs.published == 'false'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "::notice::dry-run：不写入 registry"
+            npm publish --dry-run
+          else
+            npm publish
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### publish-npm"
+            echo ""
+            echo "- package: \`${{ steps.version.outputs.name }}\`"
+            echo "- version: \`${{ steps.version.outputs.version }}\`"
+            echo "- already published: \`${{ steps.version.outputs.published }}\`"
+            echo "- dry run: \`${{ inputs.dry_run == true }}\`"
+            echo "- ref: \`${{ github.ref }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

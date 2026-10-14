@@ -43,20 +43,31 @@
 | 与 input-traffic 的关系 | 该插件的「最小桥」全局名优先读 `window.__DSH_OFFPEAK_BRIDGE__`，同时兼容它历史上写的 `window.__DSH_SESSION_GUARD_BRIDGE__`；没有它时本插件自带回退冻结/徽标，两者不互相取代。 |
 | 已知限制 | 不识别法定节假日；畅跑按配置时区解释墙钟；高峰拦截列表是**精确模型名**匹配（不做关键字/正则的批量覆盖）。 |
 
-## 安装（源码方式）
+## 安装
+
+三条通道任选：npm 包 / GitHub 仓库 / 本地目录或 Release 里的 tgz。
+
+```bash
+# ① npm（推荐）
+dsh plugin --profile desktop add dsh-offpeak
+
+# ② GitHub（首次需在 profile 的 pnpm-workspace.yaml 里给 allowBuilds 放行该包的 prepare 构建）
+dsh plugin --profile desktop add github:lizilong1993/dsh-offpeak
+
+# ③ 本地目录 / Release 资产（零权限）
+dsh plugin --profile desktop add ./dsh-offpeak
+dsh plugin --profile desktop add ./dsh-offpeak-3.1.6.tgz
+
+dsh --profile desktop --dump-config     # 验证补丁分层
+```
+
+从源码构建（开发用）：
 
 ```bash
 git clone https://github.com/lizilong1993/dsh-offpeak.git
 cd dsh-offpeak
 npm install          # 或 pnpm install
 npm run build        # 重新构建 lib/client.js（浏览器半）
-```
-
-推荐用插件管理器安装到某个 profile（它会顺带把 pnpm 依赖与 `dsh.profile.bundles` 调和好）：
-
-```bash
-dsh plugin --profile desktop add ./dsh-offpeak
-dsh --profile desktop --dump-config     # 验证补丁分层
 ```
 
 也可以手工在 profile 里指向这个检出 —— `~/.dsh/profiles/<profile>/package.json`：

@@ -43,20 +43,31 @@ Plugin id `dsh-offpeak`, settings namespace `offpeak`, config file `config/offpe
 | input-traffic | The bridge global is read from `window.__DSH_OFFPEAK_BRIDGE__` first, falling back to the historic `window.__DSH_SESSION_GUARD_BRIDGE__`; without either, the plugin ships its own fallback badge/freeze and the two do not replace each other. |
 | Known limitations | No statutory-holiday calendar; free-run interprets wall-clock input in the configured timezone; the interception list matches **exact model names** (no keyword/regex sweeping). |
 
-## Install (from source)
+## Install
+
+Pick any of the three channels: the npm package, the GitHub repository, or a local directory / the tgz attached to a Release.
+
+```bash
+# (1) npm (recommended)
+dsh plugin --profile desktop add dsh-offpeak
+
+# (2) GitHub (first time needs an allowBuilds entry in the profile's pnpm-workspace.yaml so the package's prepare build may run)
+dsh plugin --profile desktop add github:lizilong1993/dsh-offpeak
+
+# (3) local directory / Release asset (no permissions needed)
+dsh plugin --profile desktop add ./dsh-offpeak
+dsh plugin --profile desktop add ./dsh-offpeak-3.1.6.tgz
+
+dsh --profile desktop --dump-config     # verify the composed patch layers
+```
+
+Building from source (for development):
 
 ```bash
 git clone https://github.com/lizilong1993/dsh-offpeak.git
 cd dsh-offpeak
 npm install          # or pnpm install
 npm run build        # rebuild lib/client.js (the browser half)
-```
-
-The recommended way is the plugin manager, which also reconciles the pnpm dependency and `dsh.profile.bundles` for you:
-
-```bash
-dsh plugin --profile desktop add ./dsh-offpeak
-dsh --profile desktop --dump-config     # verify the composed patch layers
 ```
 
 Or point a profile at this checkout by hand — `~/.dsh/profiles/<profile>/package.json`:
