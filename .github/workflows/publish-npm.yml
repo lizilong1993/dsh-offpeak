@@ -1,16 +1,14 @@
-# dsh-offpeak — publish to npm
+# dsh-offpeak — publish to npm（**仅手动**）
 #
-# 触发：push 到 main、推 tag（v*）、手动 workflow_dispatch（可勾 dry_run 预演）。
-# 认证：仓库 secret `NPM_TOKEN`（Granular/Automation token，需允许 bypass 2FA），
+# 触发：只保留 workflow_dispatch（手动）；push / tag 不再自动发布 —— 发布改为手动执行：
+#   cd <checkout> && npm publish            # 或用本工作流的“Run workflow”（可勾 dry_run 预演）
+# 认证：仓库 secret `NPM_TOKEN`（Granular token 需 Packages: Read and write + All packages + Bypass 2FA），
 #       经 `NODE_AUTH_TOKEN` 交给 npm；registry 由 setup-node 的 registry-url 写进 .npmrc。
 # 权限：最小化 —— 只读 contents（不使用 provenance，故不需要 id-token: write）。
-# 行为：发布前校验「版本号未被占用」——已存在则只提示、不发布（重复推 main 不会失败）。
+# 行为：发布前校验「版本号未被占用」——已存在则只提示、不发布。
 name: publish-npm
 
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
   workflow_dispatch:
     inputs:
       dry_run:
