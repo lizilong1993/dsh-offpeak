@@ -56,7 +56,7 @@ dsh plugin --profile desktop add github:lizilong1993/dsh-offpeak
 
 # ③ 本地目录 / Release 资产（零权限）
 dsh plugin --profile desktop add ./dsh-offpeak
-dsh plugin --profile desktop add ./dsh-offpeak-3.1.6.tgz
+dsh plugin --profile desktop add ./dsh-offpeak-<version>.tgz
 
 dsh --profile desktop --dump-config     # 验证补丁分层
 ```

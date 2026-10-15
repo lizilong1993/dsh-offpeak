@@ -13,7 +13,7 @@
  * 本线（0.1.7）客户端没有 settingsScope，拦截列表的写入口是 `setModelPatterns`（写配置文件）。
  * 不做任何队列/会话动作；冻结按钮由 input-traffic 经桥接管（D6/D8）。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { badgeClassNames, badgeTitle, peakLabel, type Status } from './badge-text'
 import { FreeRunPanel } from './free-run-button'
 import { EMPTY_FREE_RUN, readFreeRun, type FreeRunView } from './free-run-button-text'
@@ -32,6 +32,7 @@ export function StatusBadge({ sessionId }: StatusBadgeProps) {
   const [status, setStatus] = useState<Status | null>(null)
   const [freeRun, setFreeRun] = useState<FreeRunView>(EMPTY_FREE_RUN)
   const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
 
   injectClientCss()
 
@@ -62,6 +63,19 @@ export function StatusBadge({ sessionId }: StatusBadgeProps) {
     }
   }, [sessionId])
 
+  // 点击面板之外的区域 → 自动收回（与再次点击徽标收起的效果一致）。
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (ev: MouseEvent) => {
+      const root = rootRef.current
+      const target = ev.target
+      if (root === null || !(target instanceof Node)) return
+      if (!root.contains(target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    return () => document.removeEventListener('mousedown', onPointerDown)
+  }, [open])
+
   if (!status || !status.enabled) return null
 
   const tasks = {
@@ -69,7 +83,7 @@ export function StatusBadge({ sessionId }: StatusBadgeProps) {
     freeRun: freeRun.windows.length > 0,
   }
   return (
-    <div className="sg-status-root">
+    <div className="sg-status-root" ref={rootRef}>
       <button
         type="button"
         className={badgeClassNames(status)}

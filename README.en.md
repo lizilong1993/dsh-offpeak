@@ -56,7 +56,7 @@ dsh plugin --profile desktop add github:lizilong1993/dsh-offpeak
 
 # (3) local directory / Release asset (no permissions needed)
 dsh plugin --profile desktop add ./dsh-offpeak
-dsh plugin --profile desktop add ./dsh-offpeak-3.1.6.tgz
+dsh plugin --profile desktop add ./dsh-offpeak-<version>.tgz
 
 dsh --profile desktop --dump-config     # verify the composed patch layers
 ```

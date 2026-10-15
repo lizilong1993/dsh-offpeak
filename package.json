@@ -1,6 +1,6 @@
 {
   "name": "dsh-offpeak",
-  "version": "3.1.6",
+  "version": "3.1.7",
   "publishConfig": {
     "tag": "dsh-0.1.7"
   },
