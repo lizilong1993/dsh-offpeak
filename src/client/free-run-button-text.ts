@@ -58,35 +58,6 @@ export const EMPTY_FREE_RUN: FreeRunView = {
   nextStartDisplay: null,
 }
 
-/** 按钮文案：固定「畅跑」，多段时带计数。 */
-export function freeRunLabel(view: FreeRunView | null | undefined): string {
-  const count = view?.windows?.length ?? 0
-  return count > 1 ? `畅跑 ×${count}` : '畅跑'
-}
-
-/** 悬浮提示：当前是否生效 + 逐条排期（多任务的重要信息出口）。 */
-export function freeRunTitle(view: FreeRunView | null | undefined): string {
-  const tz = view?.timezone !== undefined && view.timezone !== '' ? view.timezone : '本地时区'
-  const lines: string[] = ['点击打开畅跑任务管理']
-  if (view?.active === true) {
-    const left = remainingText(view?.msRemaining ?? null)
-    lines.unshift(left === null ? '畅跑生效中' : `畅跑生效中（剩 ${left}）`)
-  } else if ((view?.windows?.length ?? 0) > 0) {
-    const next = view?.nextStartDisplay ?? null
-    lines.unshift(next === null ? '畅跑未生效' : `畅跑未生效，下一段 ${next}`)
-  }
-  const windows = view?.windows ?? []
-  if (windows.length > 0) {
-    lines.push('—— 畅跑任务 ——')
-    for (const w of windows) {
-      lines.push(`${w.fromDisplay} – ${w.toDisplay}  ${statusLabel(w.status)}`)
-    }
-  } else {
-    lines.push(`还没有畅跑任务（时间按 ${tz}）`)
-  }
-  return lines.join('\n')
-}
-
 /** 单段状态标签。 */
 export function statusLabel(status: FreeRunWindowStatus): string {
   if (status === 'active') return '进行中'
@@ -142,16 +113,6 @@ export function rowPauseTitle(w: FreeRunWindow): string {
 /** 每行删除图标按钮的悬浮提示。 */
 export function rowDeleteTitle(): string {
   return '删除这一段畅跑'
-}
-
-/** 剩余时长文案（中文，粗粒度）。 */
-export function remainingText(ms: number | null): string | null {
-  if (ms === null || !Number.isFinite(ms) || ms <= 0) return null
-  const totalMinutes = Math.ceil(ms / 60_000)
-  if (totalMinutes < 60) return `${totalMinutes} 分钟`
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  return minutes === 0 ? `${hours} 小时` : `${hours} 小时 ${minutes} 分`
 }
 
 /** 从 `/session-guard/state` 响应体里取出 `freeRun`（形状异常 → 安全空视图）。 */
