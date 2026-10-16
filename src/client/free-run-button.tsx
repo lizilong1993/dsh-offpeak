@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   EMPTY_FREE_RUN,
+  ICON_ADD,
   ICON_DELETE,
   ICON_PAUSE,
   ICON_RESUME,
@@ -32,11 +33,14 @@ import {
 } from './free-run-button-text'
 import { DateRangePicker } from './date-range-picker'
 import { combineEnd, combineStart, seedRange } from './date-range'
+import { formatInstantRange } from './tz'
 import { injectClientCss } from './styles'
 
 /** slot 运行时注入的会话级 props。 */
 export interface FreeRunPanelProps {
   sessionId?: string
+  /** 显示时区（只影响列表里时间的展示；'' → 用配置时区）。 */
+  displayTz?: string
 }
 
 /** 兜底轮询间隔（畅跑是低频交互，5s 足够；到点切换另有本地定时器）。 */
@@ -61,7 +65,7 @@ const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
  * 布局对齐原「畅跑任务管理」弹层：标题 + 时区 → 新建 / 暂停全部 / 删除全部 → 任务列表。
  * 打开由父层（状态徽标面板）控制，所以这里没有「打开/关闭」状态、没有触发按钮、也不点外关闭。
  */
-export function FreeRunPanel({ sessionId }: FreeRunPanelProps) {
+export function FreeRunPanel({ sessionId, displayTz }: FreeRunPanelProps) {
   const [view, setView] = useState<FreeRunView>(EMPTY_FREE_RUN)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -180,41 +184,53 @@ export function FreeRunPanel({ sessionId }: FreeRunPanelProps) {
         <span className="sg-fr-tz">按 {view.timezone === '' ? '本地时区' : view.timezone}</span>
       </div>
 
-      {/* 顶部三个文本按钮：新建 / 暂停全部 / 删除全部 */}
+      {/* 顶部三个按钮：新建 / 暂停全部 / 删除全部（窄宽度下只显示图标，见 styles.ts 容器查询） */}
       <div className="sg-fr-bar">
         <button
           type="button"
           className={`sg-fr-bar-btn ${creating ? 'sg-fr-bar-on' : ''}`}
           disabled={busy}
           aria-pressed={creating}
+          title="新建畅跑任务"
           onClick={() => {
             setCreating((prev) => !prev)
             setError('')
           }}
         >
-          新建畅跑任务
+          <span className="sg-btn-icon" aria-hidden="true">
+            {ICON_ADD}
+          </span>
+          <span className="sg-btn-label">新建畅跑任务</span>
         </button>
-            <button
-              type="button"
-              className="sg-fr-bar-btn"
-              disabled={busy || nothingToAct}
-              onClick={() => {
-                void rpc(allPaused ? 'freeRunResumeAll' : 'freeRunPauseAll')
-              }}
-            >
-              {pauseAllLabel(view)}
-            </button>
-            <button
-              type="button"
-              className="sg-fr-bar-btn sg-fr-bar-danger"
-              disabled={busy || view.windows.length === 0}
-              onClick={() => {
-                void rpc('freeRunClear')
-              }}
-            >
-              删除全部任务
-            </button>
-          </div>
+        <button
+          type="button"
+          className="sg-fr-bar-btn"
+          disabled={busy || nothingToAct}
+          title={pauseAllLabel(view)}
+          onClick={() => {
+            void rpc(allPaused ? 'freeRunResumeAll' : 'freeRunPauseAll')
+          }}
+        >
+          <span className="sg-btn-icon" aria-hidden="true">
+            {allPaused ? ICON_RESUME : ICON_PAUSE}
+          </span>
+          <span className="sg-btn-label">{pauseAllLabel(view)}</span>
+        </button>
+        <button
+          type="button"
+          className="sg-fr-bar-btn sg-fr-bar-danger"
+          disabled={busy || view.windows.length === 0}
+          title="删除全部任务"
+          onClick={() => {
+            void rpc('freeRunClear')
+          }}
+        >
+          <span className="sg-btn-icon" aria-hidden="true">
+            {ICON_DELETE}
+          </span>
+          <span className="sg-btn-label">删除全部任务</span>
+        </button>
+      </div>
 
           {creating && (
             <div className="sg-fr-form">
@@ -297,7 +313,8 @@ export function FreeRunPanel({ sessionId }: FreeRunPanelProps) {
               {view.windows.map((w) => (
                 <li key={w.id} className="sg-fr-item">
                   <span className="sg-fr-range">
-                    {w.fromDisplay} – {w.toDisplay}
+                    {formatInstantRange(w.from, w.to, displayTz === undefined || displayTz === '' ? view.timezone : displayTz) ||
+                      `${w.fromDisplay} – ${w.toDisplay}`}
                   </span>
                   <span className={`sg-fr-tag sg-fr-tag-${w.status}`}>{statusLabel(w.status)}</span>
                   <button

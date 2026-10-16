@@ -439,3 +439,108 @@ export function writeModelPatterns(patterns, { env = process.env, cwd = process.
   }
   return { ok: true, path, patterns: cleaned }
 }
+
+/**
+ * 把「高峰时段 + 周末默认谷时」写回配置文件（面板底部「当前高峰谷时」区的写入口）。
+ *
+ * 与 `writeModelPatterns` 同契约：解析顺序一致、坏 JSON 拒绝写、**只改这两处键**、原子写。
+ * 形态自适应：文件里是嵌套形态（`peakPolicy.peakWindows` / `weekendPolicy`）就写嵌套，
+ * 旧扁平形态（`peakWindows` / `weekendMode`）就写扁平，新文件默认嵌套。
+ * 逐行按下标保留原有 `name` / `days`；新增行继承第一行的 `days`（没有则工作日）。
+ * 周末只改 `enabled`，`days` / `mode` 原样保留。
+ *
+ * @param {Array<{start:string,end:string}>} windows 高峰时段（1–8 段，HH:MM）
+ * @param {boolean} weekendMode 周末是否默认谷时
+ * @param {{env?:object,cwd?:string,pluginDir?:string,exists?:Function,readFile?:Function,writeFile?:Function,mkdir?:Function}} [deps]
+ * @returns {{ok:boolean,path?:string,windows?:Array<object>,weekendMode?:boolean,error?:string}}
+ */
+export function writePeakPolicy(windows, weekendMode, { env = process.env, cwd = process.cwd(), pluginDir, exists = existsSync, readFile = (p) => readFileSync(p, 'utf8'), writeFile = (p, text) => writeFileSync(p, text, 'utf8'), mkdir = (p) => mkdirSync(p, { recursive: true }) } = {}) {
+  if (!Array.isArray(windows) || windows.length === 0) return { ok: false, error: 'windows must be a non-empty array' }
+  if (windows.length > 8) return { ok: false, error: 'at most 8 peak windows are supported' }
+  if (typeof weekendMode !== 'boolean') return { ok: false, error: 'weekendMode must be a boolean' }
+  const cleaned = []
+  for (const w of windows) {
+    if (w === null || typeof w !== 'object') return { ok: false, error: 'each window must be an object with start/end' }
+    const rawStart = typeof w.start === 'string' ? w.start.trim() : ''
+    const rawEnd = typeof w.end === 'string' ? w.end.trim() : ''
+    const startMin = parseHHMM(rawStart)
+    const endMin = parseHHMM(rawEnd)
+    if (startMin === null || endMin === null) {
+      return { ok: false, error: `invalid time ${JSON.stringify(`${rawStart}-${rawEnd}`)} (expect HH:MM)` }
+    }
+    if (startMin === endMin) return { ok: false, error: `window start and end must differ (${rawStart})` }
+    // 归一成 HH:MM（`H:MM` 也接受，但落盘统一两位数，避免同一份配置出现两种写法）。
+    const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+    cleaned.push({ start: hhmm(startMin), end: hhmm(endMin) })
+  }
+
+  const candidates = candidateConfigPaths({ env, cwd, pluginDir })
+  const existing = selectConfigPath(candidates, exists)
+  const path = existing ?? candidates[0]
+
+  let raw = {}
+  if (existing !== null) {
+    let text
+    try {
+      text = readFile(existing)
+    } catch (e) {
+      return { ok: false, error: `cannot read config file: ${String((e && e.message) || e)}` }
+    }
+    try {
+      const parsed = JSON.parse(text)
+      if (!isPlainObject(parsed)) return { ok: false, error: 'config root is not a JSON object — refusing to overwrite' }
+      raw = parsed
+    } catch (e) {
+      return { ok: false, error: `config file is not valid JSON — refusing to overwrite (${String((e && e.message) || e)})` }
+    }
+  }
+
+  // 峰窗口形态：有嵌套就用嵌套，否则看扁平；新文件写嵌套。
+  const useNested = isPlainObject(raw.peakPolicy) || !Array.isArray(raw.peakWindows)
+  const prevRows = useNested
+    ? isPlainObject(raw.peakPolicy) && Array.isArray(raw.peakPolicy.peakWindows)
+      ? raw.peakPolicy.peakWindows
+      : []
+    : raw.peakWindows
+  const inheritedDays =
+    prevRows.length > 0 && Array.isArray(prevRows[0]?.days) ? prevRows[0].days : ['mon', 'tue', 'wed', 'thu', 'fri']
+  const built = cleaned.map((w, i) => {
+    const prev = prevRows[i]
+    const row = { start: w.start, end: w.end }
+    if (isPlainObject(prev)) {
+      if (typeof prev.name === 'string' && prev.name !== '') row.name = prev.name
+      if (Array.isArray(prev.days)) row.days = prev.days
+    }
+    if (!Array.isArray(row.days)) row.days = inheritedDays
+    if (typeof row.name !== 'string' || row.name === '') row.name = `${w.start}-${w.end}`
+    return row
+  })
+
+  const next = { ...raw }
+  if (useNested) {
+    next.peakPolicy = { ...(isPlainObject(raw.peakPolicy) ? raw.peakPolicy : {}), peakWindows: built }
+  } else {
+    next.peakWindows = built
+  }
+  // 周末：嵌套优先，其次扁平；两者都没有则新建嵌套（补齐 days/mode，避免归一化兜底）。
+  if (isPlainObject(raw.weekendPolicy)) {
+    next.weekendPolicy = { ...raw.weekendPolicy, enabled: weekendMode }
+  } else if (raw.weekendMode !== undefined) {
+    next.weekendMode = weekendMode
+  } else {
+    next.weekendPolicy = {
+      enabled: weekendMode,
+      days: [...DEFAULT_WEEKEND_DAYS],
+      mode: WEEKEND_MODE_OFF_PEAK,
+    }
+  }
+
+  try {
+    const dir = path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')))
+    if (dir !== '' && !exists(path)) mkdir(dir)
+    writeFile(path, `${JSON.stringify(next, null, 2)}\n`)
+  } catch (e) {
+    return { ok: false, error: `cannot write config file: ${String((e && e.message) || e)}` }
+  }
+  return { ok: true, path, windows: built, weekendMode }
+}

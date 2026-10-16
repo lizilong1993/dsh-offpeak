@@ -4,7 +4,7 @@
  * 这是 v0.3.0 引入的**唯一权威时间判定**：`time.js` 保留为底层原语
  * （parseHHMM / inWindow / wallClock / isWeekend / localMidnight），其
  * `shouldPause` / `msUntilOffPeak` 退化为本模块的薄适配层，因此所有既有调用点
- * （scheduler / wiring / request-guard / step-gate）自动升级为可配置策略。
+ * （scheduler / wiring / request-guard）自动升级为可配置策略。
  *
  * ── 模式（MODE）─────────────────────────────────────────────────────────
  *   OFF_PEAK  周末（weekendPolicy 命中）——全天谷时，畅快跑

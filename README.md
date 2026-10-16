@@ -23,11 +23,13 @@
 | 能力 | 行为 |
 |---|---|
 | 可配置峰谷策略 | 峰窗口、时区、每窗口的星期与周末规则全部来自 `config/offpeak.json`（env → `$DSH_HOME/config` → `<cwd>/config` → 包内默认）。配置文件写坏**绝不静默让守卫失效**：错误被收集并暴露（`/session-guard/settings` 与 `/diag` 的 `configFile.errors`），对应键保留默认值。 |
-| 回合 / step 门控 | 入峰时暂停 running 会话（`stepLevelPause` 开启则在下一个 `agent/pre-step` 拉门），退峰自动放行；自动放行**不碰**手动 `/pause`。 |
+| 回合门控 | 入峰时对 running 会话走回合级暂停（当前轮跑完再拦），退峰自动放行；自动放行**不碰**手动 `/pause`。 |
 | 请求级守卫 | `agent/request` **每个请求都过**，所以入峰后才启动的会话、会话中途切到官方源的情况都能兜住。`hold`（默认）静默挂起，`error` 抛可识别的 `PEAK_DEFERRED`。 |
 | 目标判定 | 优先级：显式 `officialProviders` → **模型名（精确匹配、大小写不敏感）** → 实时 `baseURL` → catalog 默认端点 → 内置 id（`deepseek-official`）→ unknown。只有判为官方才拦。 |
 | 高峰拦截列表 | 在徽标面板里勾选模型（或直接写 `officialModelPatterns`）：条目是**模型名精确匹配** —— 勾了 `ocg/deepseek-flash` 就只拦这一个模型，无论它跑在哪条路由上；**不勾不拦**。面板顶部有关键词过滤、全选/取消全选、刷新与热重载，每个已拦截项都带 `×` 撤销。 |
-| 畅跑 | 给单个会话排一段或多段绝对时间窗口，窗口内该会话在**入峰、step 门、请求挂起**三处都豁免；支持逐段暂停/恢复、合并上限 8 条、持久化。面板里与拦截列表同处一个展开区（最上方）。 |
+| 畅跑 | 给单个会话排一段或多段绝对时间窗口，窗口内该会话在**入峰、请求挂起**两处都豁免；支持逐段暂停/恢复、合并上限 8 条、持久化。面板里与拦截列表同处一个展开区（最上方）。 |
+| 高峰谷时可编辑 | 面板最底部「当前高峰谷时」：按配置预填每段 `开始 – 结束`（可增删行）+「周末默认谷时」复选框，保存即写入 `config/offpeak.json` 并立即生效（其它键与每行的星期限制原样保留）。 |
+| 显示时区 | 可另选任一 IANA 时区（默认策略时区）：畅跑时间、峰谷时段与 hover 卡片按它换算展示；**配置文件里的时间值不动**。 |
 | 徽标 | 输入区一个可点徽标：`高峰` / `高峰 · 拦截中` / `高峰 · 畅跑中` / `谷时` / `周末`；拦截态红、放行态绿。 |
 | 自动重试 | 可选的后端重试（默认关），且永远给门控让路。 |
 
@@ -92,8 +94,7 @@ npm run build        # 重新构建 lib/client.js（浏览器半）
   "officialModelPatterns": [],        // 高峰拦截的模型名（精确匹配、大小写不敏感）
   "officialBaseURLs": ["api.deepseek.com"],
   "deferredMode": "hold",             // 'hold' | 'error'
-  "deferredResume": true,
-  "stepLevelPause": true
+  "deferredResume": true
 }
 ```
 
@@ -101,7 +102,7 @@ npm run build        # 重新构建 lib/client.js（浏览器半）
 
 ## HTTP / 服务面
 
-`GET /session-guard/status` · `/state?session=` · `/settings` · `/provider?provider=&model=` · `/models` · `/diag` · `/events`（SSE）· `POST /session-guard/rpc`（`stopNextTurn|resume|lockQueue|unlockQueue|stepPause|stepResume|state|reloadConfig|setModelPatterns|freeRunAdd|…`），以及进程内的 `sessionGuard` 服务端口。
+`GET /session-guard/status` · `/state?session=` · `/settings` · `/provider?provider=&model=` · `/models` · `/diag` · `POST /session-guard/rpc`（`stopNextTurn|resume|lockQueue|unlockQueue|state|reloadConfig|setModelPatterns|setPeakPolicy|freeRunAdd|…`），以及进程内的 `sessionGuard` 服务端口（`GET /events` 的 SSE 流随 step 门控一并移除，v3.3.0）。
 
 ## 测试
 

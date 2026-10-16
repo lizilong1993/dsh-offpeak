@@ -26,7 +26,6 @@ import { PAUSED_REASON_PEAK } from './pause-gate.js'
  * @param {object} deps.ctx host context
  * @param {()=>object} deps.getSettings 读实时配置
  * @param {{stopNextTurn:Function, resume:Function}} deps.gate 会话门
- * @param {ReturnType<import('./step-gate.js').createStepGate>} [deps.stepGate] step 级门控（v0.2.0）
  * @param {object} [deps.logger]
  * @param {()=>Date} [deps.clock]
  * @param {typeof setTimeout} [deps.setTimer]
@@ -38,7 +37,6 @@ export function createWiring({
   ctx,
   getSettings,
   gate,
-  stepGate,
   logger,
   clock = () => new Date(),
   setTimer = setTimeout,
@@ -69,7 +67,7 @@ export function createWiring({
   let releaseTimer = null
   /** 本插件因入峰而暂停的会话（只自动恢复这些，绝不碰用户手动暂停的会话）。 */
   const pausedByPeak = new Set()
-  /** 每个会话「本轮 step 已 claim、尚未落库」的输入批次（`agent/pre-step` payload.messages）。 */
+  /** 每个会话「本轮已 claim、尚未落库」的输入批次（`agent/pre-step` payload.messages）。 */
   const claimedInput = new Map()
 
   /**
@@ -213,13 +211,7 @@ export function createWiring({
         `[offpeak] target switched to non-official "${rec.provider}/${rec.model}" (matchedBy=${cls.matchedBy}) — released held request of ${sessionId} (rerouted)`,
       )
     }
-    // step 门控：目标转非官方 → 放行被挂起的 step（step gate 自身按目标判定，无需 pausedByPeak）
-    if (stepGate) {
-      const r = stepGate.release(sessionId, 'non-official')
-      if (r && r.released === true) {
-        logger?.info?.(`[offpeak] target switched to non-official "${rec.provider}" (matchedBy=${cls.matchedBy}) — releasing step gate for ${sessionId}`)
-      }
-    }
+    // step 门控已移除（v3.3.0）：目标转非官方只需放行请求 + 自动恢复会话。
     if (!pausedByPeak.has(sessionId)) return { releasedHold, resumed: false }
     pausedByPeak.delete(sessionId)
     logger?.info?.(`[offpeak] target switched to non-official "${rec.provider}" (matchedBy=${cls.matchedBy}) — auto-resuming ${sessionId}`)
@@ -256,8 +248,6 @@ export function createWiring({
     const agents = ctx && ctx.agents
     if (!agents) return { paused: [], skipped: [] }
     const roots = typeof agents.roots === 'function' ? agents.roots() : typeof agents.list === 'function' ? agents.list() : []
-    // Q1-A：step 级门控开启时，入峰不再 turn 级暂停——会话跑到下一个 pre-step 边界自动拉门。
-    const stepLevel = cfg.stepLevelPause === true && !!stepGate
     const paused = []
     const skipped = []
     for (const agent of Array.isArray(roots) ? roots : []) {
@@ -277,12 +267,6 @@ export function createWiring({
         skipped.push({ sessionId: id, why: 'non-official', provider: targets.providerOf(id) })
         continue
       }
-      if (stepLevel) {
-        // 新一轮高峰：清掉上一轮的 bypass，让 step 门重新生效。
-        stepGate.clearBypass(id)
-        paused.push({ sessionId: id, via: 'stepGate', ok: true })
-        continue
-      }
       try {
         const r = await gate.stopNextTurn(id, { mode: cfg.pauseMode, reason: cfg.pauseReason, pausedReason: PAUSED_REASON_PEAK })
         if (!r || r.ok !== false) pausedByPeak.add(id)
@@ -291,7 +275,7 @@ export function createWiring({
         warn(`stopNextTurn failed for ${id}: ${String(e && e.message || e)}`)
       }
     }
-    logger?.info?.(`[offpeak] peak entered — ${stepLevel ? 'step-level gate armed for' : 'paused'} ${paused.length} session(s): ${JSON.stringify(paused)}; skipped ${JSON.stringify(skipped)}`)
+    logger?.info?.(`[offpeak] peak entered — paused ${paused.length} session(s): ${JSON.stringify(paused)}; skipped ${JSON.stringify(skipped)}`)
     return { paused, skipped }
   }
 
@@ -314,17 +298,11 @@ export function createWiring({
     }
   }
 
-  /** 退峰：先释放 step 门（回合原地续跑），再放行挂起的请求、恢复暂停的会话。 */
+  /** 退峰：放行挂起的请求、恢复暂停的会话（step 门控已移除，v3.3.0）。 */
   async function onLeavePeak(cfg) {
     if (releaseTimer !== null) {
       clearTimer(releaseTimer)
       releaseTimer = null
-    }
-    // 0) step 级门控：先放行被挂起的 step —— 回合本来就还开着，无需 followup。
-    if (stepGate) {
-      const releasedSteps = stepGate.releaseAll('off-peak')
-      stepGate.clearAllBypass()
-      if (releasedSteps.length > 0) logger?.info?.(`[offpeak] peak left — released ${releasedSteps.length} step gate(s): ${JSON.stringify(releasedSteps)}`)
     }
     // 1) 先取延后记录快照（releaseAll 会清空），再放行全部挂起。
     const deferredSnapshot = deferrals.deferredList()
@@ -371,23 +349,10 @@ export function createWiring({
   }
 
   /**
-   * 安装 step 级门控（`agent/pre-step` waterfall，v0.2.0）。
-   * disposer 释放全部挂起门，避免卸载后 Promise 悬挂。
-   */
-  function installStepGuard() {
-    if (!stepGate || !ctx || typeof ctx.on !== 'function') return () => {}
-    const off = ctx.on('agent/pre-step', (payload, next) => stepGate.hold(payload, next))
-    return () => {
-      if (typeof off === 'function') off()
-      stepGate.releaseAll('disposed')
-    }
-  }
-
-  /**
    * 安装「已 claim、未落库」输入批次追踪（`agent/pre-step` waterfall）。
    *
    * 只记录、不拦：`payload.messages` 就是这一步 `inbox.claim()` 拿走的那批输入。
-   * `prepend` → 永远排在 step 门（以及宿主任何监听）之前：门挂起时我们也要先拿到批次，
+   * `prepend` → 永远排在宿主任何监听之前：门挂起时我们也要先拿到批次，
    * 否则门被取消时同样丢输入。
    */
   function installClaimTracker() {
@@ -417,10 +382,6 @@ export function createWiring({
       releaseTimer = null
     }
     pausedByPeak.clear()
-    if (stepGate) {
-      stepGate.releaseAll('disposed')
-      stepGate.clearAllBypass()
-    }
     deferrals.rejectAll('disposed')
     claimedInput.clear()
   }
@@ -438,7 +399,6 @@ export function createWiring({
     installGuard,
     installClaimTracker,
     restoreUncommittedInput,
-    installStepGuard,
     dispose,
   }
 }

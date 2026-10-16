@@ -3,7 +3,7 @@
  *
  * 高峰自动会话门：
  * - 每 30s tick 判定状态（NORMAL ↔ PAUSED_PEAK），纯状态机见 scheduler.js。
- * - 入峰（且非周末）：按 `stepLevelPause` 走 step 门或回合级暂停。
+ * - 入峰（且非周末）：对 running 会话走回合级暂停（stopNextTurn），当前轮跑完再拦。
  * - 退峰/周末：放行 step 门 + 恢复本插件暂停的会话。
  * - **畅跑（v0.3.0）**：单会话限时无视峰谷，见 src/free-run.js。
  * - `ctx.provide('sessionGuard')` 冗余端口，input-traffic 冻结按钮透传接入。
@@ -11,7 +11,7 @@
  */
 import { computeState, transition } from './scheduler.js'
 import { MODES, createTimePolicyResolver, stableStringify } from './time-policy.js'
-import { loadConfigFile, writeModelPatterns } from './config-file.js'
+import { loadConfigFile, writeModelPatterns, writePeakPolicy } from './config-file.js'
 import { fileURLToPath } from 'node:url'
 import { createStore } from './store.js'
 import { createGate } from './gate.js'
@@ -19,7 +19,6 @@ import { createBridge } from './bridge.js'
 import { createRetry } from './retry.js'
 import { createPauseStore } from './pause-store.js'
 import { createPauseGate, PAUSED_REASON_PEAK } from './pause-gate.js'
-import { createStepGate } from './step-gate.js'
 import {
   appendWindow,
   createFreeRunStore,
@@ -35,7 +34,6 @@ import {
   windowStatus,
 } from './free-run.js'
 import { detectTaskControl } from './detect.js'
-import { makeIsRoot } from './request-guard.js'
 import { createWiring } from './wiring.js'
 import { NS, DEFAULT_SETTINGS, SettingsSchema, effectiveDefaults } from './settings.js'
 
@@ -173,46 +171,14 @@ export function apply(ctx, config = {}) {
     return Object.keys(entry).length === 0 ? base : { ...base, ...entry }
   }
 
-  // ── SSE 推送（v0.2.0）：step 门状态变化时立刻推给对应会话页面 ──
-  // 客户端「暂停会话 / 继续会话」按钮据此更新，无需等轮询。
-  const sseClients = new Set()
-
-  function sseSend(client, payload) {
-    try {
-      client.res.write(`data: ${JSON.stringify(payload)}\n\n`)
-    } catch {
-      /* 连接已断开：交给 close 事件清理 */
-    }
-  }
-
-  function broadcastStep(sessionId, stepState) {
-    const id = String(sessionId)
-    for (const client of [...sseClients]) {
-      if (client.sessionId !== '' && client.sessionId !== id) continue
-      sseSend(client, { type: 'step', sessionId: id, state: stepState })
-    }
-  }
+  // ── SSE 推送已随 step 门控一起移除（v3.3.0）：客户端只轮询 /status 与 /state。 ──
 
   // ── 自研会话门（脱离 dsh-task-control，真暂停）──
   // 状态持久化 + 引擎；经 gate.stopNextTurn/resume 主路径接入；/pause /resume /cancel 命令。
-  // v0.2.0 追加 step 级门控（src/step-gate.js）：stepGate 与 pauseGate/wiring 互相需要，
-  // 用 late-bound 引用装配，避免构造期循环依赖。
   const pauseStore = createPauseStore()
-  let pauseGateRef = null
-  let wiringRef = null
-  const stepGate = createStepGate({
-    getSettings: readCfg,
-    shouldHoldSession: (cfg, id) => (wiringRef ? wiringRef.shouldPauseSession(cfg, id) : true),
-    isHeldByDeferrals: (id) => (wiringRef ? wiringRef.deferrals.has(id) : false),
-    isRootAgent: makeIsRoot(ctx),
-    pauseGate: { pause: (id, opts) => pauseGateRef.pause(id, opts) },
-    logger: ctx.logger,
-    onChange: (id, snapshot) => broadcastStep(id, snapshot),
-  })
-  const pauseGate = createPauseGate({ ctx, pauseStore, stepGate })
-  pauseGateRef = pauseGate
+  const pauseGate = createPauseGate({ ctx, pauseStore })
   const gate = createGate({ getCtx: () => ctx, getSettings: readCfg, store, pauseGate })
-  const bridge = createBridge(ctx, gate, store, pauseGate, stepGate)
+  const bridge = createBridge(ctx, gate, store, pauseGate)
 
   // ── 畅跑（v0.3.0）：单会话限时无视峰谷 ──
   // 状态只挂在 per-session 钩子上，`resolve()`/`scheduler` 完全不知道它的存在
@@ -310,11 +276,9 @@ export function apply(ctx, config = {}) {
     ctx,
     getSettings: readCfg,
     gate,
-    stepGate,
     logger: ctx.logger,
     isFreeRunActive: (sessionId, date) => isFreeRunActiveAt(sessionId, date),
   })
-  wiringRef = wiring
 
   // ── 畅跑状态迁移 ──
   // 按**派生布尔 active** 的翻转驱动，而不是按五态逐个判断——多窗口下这样最不易漏。
@@ -348,18 +312,13 @@ export function apply(ctx, config = {}) {
   /**
    * 畅跑豁免「进入 / 离开」的唯一副作用出口。
    *
-   * - 进入：释放该会话的 step 门、放行该会话被 hold 的请求、恢复本插件因峰谷
-   *   暂停的该会话（`auto` 保证不碰手动 `/pause`）。
-   * - 离开：若当前仍在峰内，重新挂起该会话（step 门清 bypass 由下一个 pre-step 拉门；
-   *   回合级则 stopNextTurn），退峰时既有 onLeavePeak 会恢复——即「自动挂起，等待波谷自动继续」。
+   * - 进入：放行该会话被 hold 的请求、恢复本插件因峰谷暂停的该会话
+   *   （`auto` 保证不碰手动 `/pause`）。
+   * - 离开：若当前仍在峰内，重新挂起该会话（回合级 stopNextTurn），退峰时既有
+   *   onLeavePeak 会恢复——即「自动挂起，等待波谷自动继续」。
    */
   async function applyFreeRunTransition(sessionId, nowActive) {
     if (nowActive) {
-      try {
-        stepGate.release(sessionId, 'free-run')
-      } catch {
-        /* 幂等，门不存在即 no-op */
-      }
       try {
         wiring.deferrals.release(sessionId, 'free-run')
       } catch {
@@ -385,16 +344,11 @@ export function apply(ctx, config = {}) {
     if (!inPeak) return
     const cfg = readCfg()
     try {
-      if (cfg.stepLevelPause === true && stepGate) {
-        // 清 bypass 后，下一个 agent/pre-step 会因 shouldPauseSession 为真而拉门。
-        stepGate.clearBypass(sessionId)
-      } else {
-        await gate.stopNextTurn(sessionId, {
-          mode: cfg.pauseMode,
-          reason: cfg.pauseReason,
-          pausedReason: PAUSED_REASON_PEAK,
-        })
-      }
+      await gate.stopNextTurn(sessionId, {
+        mode: cfg.pauseMode,
+        reason: cfg.pauseReason,
+        pausedReason: PAUSED_REASON_PEAK,
+      })
     } catch (e) {
       ctx.logger?.warn?.(`[offpeak] free-run suspend failed for ${sessionId}: ${String((e && e.message) || e)}`)
     }
@@ -510,13 +464,8 @@ export function apply(ctx, config = {}) {
 
   // ── 「已 claim、未落库」输入批次追踪（agent/pre-step waterfall）──
   // 宿主 preStep() 先 inbox.claim()、user/message 才在请求通过后落库：hold 被 abort /
-  // 超限 / 顶替（或 step 门被取消）时把那批输入还回队列，否则用户点停止就丢消息。
-  // 必须排在 step 门之前：注册顺序 = waterfall 外层优先，门挂起时我们也要先拿到批次。
+  // 超限 / 顶替时把那批输入还回队列，否则用户点停止就丢消息。
   ctx.effect(() => wiring.installClaimTracker(), 'offpeak: claim tracker')
-
-  // ── step 级门控（agent/pre-step waterfall，v0.2.0）──
-  // 高峰 + 非周末 + 目标官方 → 在下一个 step 的模型请求前拉门；退峰原地续跑。
-  ctx.effect(() => wiring.installStepGuard(), 'offpeak: step guard')
 
   ctx.effect(() => () => wiring.dispose(), 'offpeak: wiring dispose')
 
@@ -546,8 +495,6 @@ export function apply(ctx, config = {}) {
         const sid = String(invocation?.agent?.id ?? '')
         if (!sid) return { kind: 'error', text: 'no session for this command' }
         const tokens = tokensOf(invocation.rawInput)
-        // v0.2.0：step 门挂起时，「恢复」= 放行该 step 且本峰内不再拦（用户显式继续）。
-        bridge.stepResume(sid, { bypass: true, reason: 'command' })
         return pauseGate.resume(sid, {
           confirm: tokens.includes('confirm'),
           choice: tokens.includes('skip') ? 'skip' : 'rerun',
@@ -560,7 +507,6 @@ export function apply(ctx, config = {}) {
       handler: (invocation) => {
         const sid = String(invocation?.agent?.id ?? '')
         if (!sid) return { kind: 'error', text: 'no session for this command' }
-        bridge.stepResume(sid, { bypass: false, reason: 'command' })
         return pauseGate.cancel(sid)
       },
     }))
@@ -574,7 +520,6 @@ export function apply(ctx, config = {}) {
       const st = bridge.state(sessionId)
       if (st.queueLocked) return true
       if (st.paused) return true // 自研会话门真暂停
-      if (st.pausedStep) return true // v0.2.0：step 门挂起同样让路，绝不绕过会话门
       if (st.taskControl && st.taskControl.paused) return true
       return false
     },
@@ -674,54 +619,16 @@ export function apply(ctx, config = {}) {
             return json(200, {
               ok: true,
               state: st,
-              // v0.2.0：PRD §6.2 的 `paused: { step, turn }` 形状（顶层，兼容既有 state.paused 布尔）
-              // step = 已拉门；manual = 已请求但还没到边界（按钮同样显示「继续会话」）
               paused: {
-                step: st.pausedStep === true,
                 turn: st.paused === true,
-                manual: st.stepManual === true,
                 // v0.3.0：'peak_window' = 峰谷策略暂停（退峰自动恢复）；'manual' = 用户显式暂停。
                 reason: st.pausedReason ?? null,
-              },
-              stepGate: {
-                held: st.pausedStep === true,
-                manual: st.stepManual === true,
-                since: st.stepHeldSince,
-                bypass: st.stepBypass === true,
               },
               target: wiring.targets.get(sessionId),
               held: wiring.deferrals.has(sessionId),
               deferred: wiring.deferrals.isDeferred(sessionId),
               freeRun: freeRunView(sessionId),
             })
-          }
-          // GET /session-guard/events?session=<id> —— SSE：step 门状态变化即时推送
-          if (method === 'GET' && url.pathname === '/session-guard/events') {
-            const sessionId = url.searchParams.get('session') ?? ''
-            res.writeHead(200, {
-              'content-type': 'text/event-stream; charset=utf-8',
-              'cache-control': 'no-cache, no-transform',
-              connection: 'keep-alive',
-            })
-            res.write(': connected\n\n')
-            const client = { sessionId, res }
-            sseClients.add(client)
-            sseSend(client, { type: 'step', sessionId, state: stepGate.state(sessionId) })
-            const keepAlive = setInterval(() => {
-              try {
-                res.write(': ping\n\n')
-              } catch {
-                /* 连接已断开 */
-              }
-            }, 25_000)
-            if (typeof keepAlive.unref === 'function') keepAlive.unref()
-            const cleanup = () => {
-              clearInterval(keepAlive)
-              sseClients.delete(client)
-            }
-            req.on?.('close', cleanup)
-            res.on?.('close', cleanup)
-            return undefined
           }
           // GET /session-guard/provider?provider=<id>[&model=<name>] —— 官方判定诊断（排查误判用）
           // 带上 model 才能复现「按模型名判官方」这一层（默认关键字 deepseek）。
@@ -809,12 +716,29 @@ export function apply(ctx, config = {}) {
                 weekendMode: cfg.weekendMode,
                 weekendDays: cfg.weekendDays,
                 providerGuard: cfg.providerGuard === true,
-                stepLevelPause: cfg.stepLevelPause === true,
-                // 拦截列表规模：> 0 = 有拦截任务（徽标文案「高峰 · 拦截中」用，v3.1.6）
+                // 拦截列表：条数（徽标标签「高峰 · 拦截中」用）+ 名单（hover 卡片滚动展示用，v3.3.0）
                 modelPatterns: Array.isArray(cfg.officialModelPatterns) ? cfg.officialModelPatterns.length : 0,
+                officialModelPatterns: Array.isArray(cfg.officialModelPatterns) ? [...cfg.officialModelPatterns] : [],
+                // 来源判定名单：hover 卡片「拦截 <来源> 的【…】」的左半边
+                officialProviders: Array.isArray(cfg.officialProviders) ? [...cfg.officialProviders] : [],
+                // 生效的高峰时段（start/end = 策略时区墙钟，客户端负责显示时区换算）
+                peakWindows: (Array.isArray(resolver.policy?.windows) ? resolver.policy.windows : []).map((w) => ({
+                  name: w.name,
+                  start: w.start,
+                  end: w.end,
+                })),
+                // 下一段高峰的绝对时刻（ISO）：客户端按显示时区自行格式化
+                nextPeakAt: (() => {
+                  try {
+                    const mins = resolver.minutesUntilPeak(now)
+                    if (typeof mins !== 'number' || !Number.isFinite(mins) || mins < 0) return null
+                    return new Date(now.getTime() + mins * 60_000).toISOString()
+                  } catch {
+                    return null
+                  }
+                })(),
                 held: wiring.deferrals.size(),
                 deferred: wiring.deferrals.deferredSize(),
-                stepHeld: stepGate.heldIds().length,
                 timezone: cfg.timezone,
                 peakTimezone: resolver.policy.peakTimezone,
                 minutesUntilPeak: resolver.minutesUntilPeak(now),
@@ -862,12 +786,6 @@ export function apply(ctx, config = {}) {
                 configurableProviders: wiring.directory.entries().length,
                 held: wiring.deferrals.size(),
                 deferred: wiring.deferrals.deferredSize(),
-                stepGate: {
-                  held: stepGate.heldIds(),
-                  bypass: stepGate._bypassed(),
-                  timeoutMs: readCfg().stepGateTimeoutMs,
-                  enabled: readCfg().stepLevelPause === true,
-                },
                 // v0.3.0：config/offpeak.json 诊断 + 畅跑状态计数
                 configFile: {
                   path: configFile.path,
@@ -921,6 +839,21 @@ export function apply(ctx, config = {}) {
                 },
               })
             }
+            // 面板底部「当前高峰谷时」：写回 peakPolicy.peakWindows + 周末开关，其它键不动（v3.3.0）。
+            if (action === 'setPeakPolicy') {
+              const written = writePeakPolicy(parsed.windows, parsed.weekendMode, { pluginDir: PLUGIN_DIR })
+              if (!written.ok) return json(400, { ok: false, error: written.error })
+              const cfg = reloadConfigFile()
+              return json(200, {
+                ok: true,
+                result: {
+                  path: written.path,
+                  windows: cfg.settings?.peakWindows ?? written.windows,
+                  weekendMode: cfg.settings?.weekendMode ?? written.weekendMode,
+                  errors: cfg.errors,
+                },
+              })
+            }
             if (!sessionId) return json(400, { ok: false, error: 'missing sessionId' })
             // ── 畅跑（v0.3.0）：按钮的全部写操作 ──
             if (action === 'freeRunAdd') {
@@ -955,16 +888,6 @@ export function apply(ctx, config = {}) {
             if (action === 'resume') return json(200, { ok: true, result: await bridge.resume(sessionId, parsed) })
             if (action === 'lockQueue') return json(200, { ok: true, result: bridge.lockQueue(sessionId, parsed.reason) })
             if (action === 'unlockQueue') return json(200, { ok: true, result: bridge.unlockQueue(sessionId) })
-            if (action === 'stepResume') {
-              return json(200, {
-                ok: true,
-                result: bridge.stepResume(sessionId, {
-                  bypass: parsed.bypass !== false,
-                  reason: typeof parsed.reason === 'string' && parsed.reason !== '' ? parsed.reason : 'rpc',
-                }),
-              })
-            }
-            if (action === 'stepPause') return json(200, { ok: true, result: bridge.stepPause(sessionId) })
             if (action === 'state') return json(200, { ok: true, state: bridge.state(sessionId) })
             return json(400, { ok: false, error: `unknown action ${action}` })
           }

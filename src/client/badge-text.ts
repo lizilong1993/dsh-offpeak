@@ -1,25 +1,40 @@
 /**
- * dsh-offpeak — 状态徽标文案（纯函数，零依赖，可单测）。
+ * dsh-offpeak — 状态徽标文案 + hover 卡片模型（纯函数，零依赖，可单测）。
  *
- * 分离出来的原因：徽标语义（高峰的「无任务 / 拦截中 / 畅跑中」三态、谷时/周末）需要单测，
+ * 分离出来的原因：徽标语义（高峰的三态、谷时/周末）与 hover 卡片文案需要单测，
  * 而组件文件是 TSX（含 React 运行时）。这里只有字符串逻辑。
+ *
+ * v3.3.0：hover 由原生 `title` 改为自绘卡片（原生 tooltip 做不到「固定宽度 + 滚动」），
+ * 文案改为**由用户配置生成**（来源判定名单、拦截列表、高峰时段、周末规则），不再写死
+ * provider 品牌名，也不再出现 step（该能力已移除）。
  */
 
 /** /session-guard/status 返回的全局阶段（组件与测试共用）。 */
 export interface Status {
   phase: 'peak' | 'off-peak' | 'weekend'
   enabled: boolean
+  /** 周末是否默认谷时（weekendPolicy.enabled）。 */
   weekendMode: boolean
-  /** 官方源二维判定是否开启（开启时高峰期只拦官方源）。 */
+  /** 哪几天算周末（用于卡片文案）。 */
+  weekendDays?: string[]
+  /** 来源判定是否开启（开启时高峰只拦判为官方的目标）。 */
   providerGuard?: boolean
-  /** 拦截列表里的模型数（> 0 = 有拦截任务）。 */
+  /** 拦截列表条数（> 0 = 有拦截任务）。 */
   modelPatterns?: number
+  /** 拦截列表名单（hover 卡片【】里滚动展示）。 */
+  officialModelPatterns?: string[]
+  /** 来源判定名单（hover 卡片「拦截 <来源> 的【…】」）。 */
+  officialProviders?: string[]
+  /** 生效的高峰时段（策略时区墙钟）。 */
+  peakWindows?: Array<{ name?: string; start: string; end: string }>
+  /** 当前命中的窗口名（卡片「当前窗口」用）。 */
+  windowName?: string | null
+  /** 下一段高峰的绝对时刻（ISO；客户端按显示时区格式化）。 */
+  nextPeakAt?: string | null
   /** 当前被挂起的请求数（hold 模式）。 */
   held?: number
-  /** error 模式记下的延后会话数。 */
+  /** error 模式延后的会话数。 */
   deferred?: number
-  /** 当前被 step 门挂起的会话数（v0.2.0）。 */
-  stepHeld?: number
   timezone: string
 }
 
@@ -39,7 +54,7 @@ export interface BadgeTasks {
 }
 
 /**
- * 徽标文案（v3.1.6）：
+ * 徽标文案：
  *   - 非高峰 → 阶段文案（谷时 / 周末）；
  *   - 高峰 + 有畅跑任务 → `高峰 · 畅跑中`；
  *   - 高峰 + 有拦截任务 → `高峰 · 拦截中`；
@@ -58,36 +73,94 @@ export function peakLabel(status: Pick<Status, 'phase'>, tasks: BadgeTasks = {})
  * 徽标的 CSS 类：**每个阶段都是同一个按钮**（`sg-status sg-status-btn` + 配色变体）。
  *
  * 这条不变量要钉住：高峰（拦截）与谷时/周末（放行）**只有文案与颜色变**，交互形态一致 ——
- * 都是可点击按钮，点开同一个「高峰拦截列表」面板，绝不因为不是高峰就退化成不可点的展示元素。
+ * 都是可点击按钮，点开同一个面板，绝不因为不是高峰就退化成不可点的展示元素。
  */
 export function badgeClassNames(status: Pick<Status, 'phase'>): string {
   const variant = status.phase === 'peak' ? 'sg-peak' : status.phase === 'weekend' ? 'sg-weekend' : 'sg-off'
   return `sg-status sg-status-btn ${variant}`
 }
 
+/** hover 卡片需要的、已按显示时区换算好的时间文本（换算见 `tz.ts`，本模块保持纯字符串）。 */
+export interface TipTimes {
+  /** 当前窗口，如 `09:00–12:00`。 */
+  currentWindow?: string | null
+  /** 全部峰窗口摘要，如 `09:00–12:00 / 14:00–18:00`。 */
+  peakSummary?: string | null
+  /** 下一段高峰，如 `10-16 14:00`。 */
+  nextPeak?: string | null
+}
+
+/** hover 卡片内容（结构化；卡片组件负责排版与【】内的滚动）。 */
+export interface BadgeTip {
+  /** 第一行：阶段 · 时区[ · 当前窗口]。 */
+  headline: string
+  /** 有值时渲染「拦截 <source> 的【models】」（models 为空 → 卡片显示「未设置拦截模型」）。 */
+  intercept?: { source: string; models: string[] }
+  /** 其余说明行（放行口径、周末规则、下一段高峰……）。 */
+  notes: string[]
+  /** 挂起/延后计数；都为 0 时为 null。 */
+  counters: string | null
+  /** 末行提示。 */
+  hint: string
+}
+
+/** 周末天数文案（缺省与内置一致）。 */
+function weekendDaysText(status: Status): string {
+  const days = Array.isArray(status.weekendDays) && status.weekendDays.length > 0 ? status.weekendDays : ['sat', 'sun']
+  return days.join('、')
+}
+
 /**
- * 悬浮说明：写清当前的判定口径与挂起/延后数量。
- *
- * 文案必须与实际行为一致（v3.1.7 校正）：
- *   - `providerGuard` 开 → 请求级只拦「判为官方目标」的请求，其它来源照常跑；
- *     拦截列表里的模型名（`modelPatterns`）也算官方目标，因此单独把条数写出来。
- *   - `providerGuard` 关 → 请求级不拦（`provider-guard-off`），改为入峰暂停全部 running 会话。
- *   - `held` = 当前挂起的请求数，`deferred` = error 模式延后待恢复的会话数，
- *     `stepHeld` = 被 step 门挂起的会话数。
- * 不写死任何 provider 品牌名（判定名单是可配置的）。
+ * hover 卡片文案：**完全按用户当前配置生成**（来源判定开关 + 名单、拦截列表、高峰时段、
+ * 周末规则），并写入当前挂起/延后计数。不含 step（能力已移除），不写死 provider 品牌名。
  */
-export function badgeTitle(status: Status): string {
-  const base = `${PHASE_LABELS[status.phase]} · ${status.timezone}${status.weekendMode && status.phase !== 'weekend' ? ' · 周末模式' : ''}`
-  if (status.phase !== 'peak') return base
-  const patterns = status.modelPatterns ?? 0
-  const mode = status.providerGuard === true
-    ? `只拦官方目标${patterns > 0 ? ` + 拦截列表 ${patterns} 个模型名` : ''}（其它来源照常放行）`
-    : '未启用来源判定：入峰暂停全部会话、请求不拦'
+export function badgeTip(status: Status, times: TipTimes = {}): BadgeTip {
+  const tz = status.timezone === '' ? '本地时区' : status.timezone
+  const label = PHASE_LABELS[status.phase]
+  const peak = status.phase === 'peak'
+  const summary = typeof times.peakSummary === 'string' && times.peakSummary !== '' ? times.peakSummary : ''
+  const current = typeof times.currentWindow === 'string' && times.currentWindow !== '' ? times.currentWindow : ''
+  const notes: string[] = []
+  let headline = `${label} · ${tz}`
+  let intercept: BadgeTip['intercept']
+
+  if (peak) {
+    if (current !== '') headline = `${headline} · 当前窗口 ${current}`
+    if (status.providerGuard === true) {
+      const providers = Array.isArray(status.officialProviders) ? status.officialProviders : []
+      const source = providers.length > 0 ? providers.join('、') : '内置判定的官方来源'
+      intercept = { source, models: Array.isArray(status.officialModelPatterns) ? [...status.officialModelPatterns] : [] }
+      notes.push('其它来源照常放行')
+    } else {
+      notes.push('未启用来源判定：入峰暂停全部会话、请求不拦')
+    }
+    if (summary !== '') notes.push(`全部高峰时段 ${summary}`)
+  } else {
+    notes.push('请求全部放行')
+    if (summary !== '') notes.push(`高峰时段 ${summary}`)
+    if (status.weekendMode === true) notes.push(`周末整日谷时（${weekendDaysText(status)}）`)
+    else notes.push('周末不豁免（按高峰时段判定）')
+  }
+
+  const nextPeak = typeof times.nextPeak === 'string' && times.nextPeak !== '' ? times.nextPeak : ''
+  if (nextPeak !== '') notes.push(`下一段高峰 ${nextPeak}`)
+
   const held = status.held ?? 0
   const deferred = status.deferred ?? 0
-  const stepHeld = status.stepHeld ?? 0
-  const extra = held > 0 || deferred > 0 || stepHeld > 0
-    ? ` · 挂起请求 ${held} · 延后待恢复 ${deferred} · step 门挂起 ${stepHeld}`
-    : ''
-  return `${base} · ${mode}${extra}`
+  const counters = held > 0 || deferred > 0 ? `挂起请求 ${held} · 延后待恢复 ${deferred}` : null
+
+  return { headline, intercept, notes, counters, hint: '点击展开/收起高峰面板' }
+}
+
+/** 卡片内容的纯文本版（徽标按钮的 `aria-label` 用；卡片本身 aria-hidden）。 */
+export function tipText(tip: BadgeTip): string {
+  const parts: string[] = [tip.headline]
+  if (tip.intercept !== undefined) {
+    const models = tip.intercept.models.length > 0 ? tip.intercept.models.join('、') : '未设置拦截模型'
+    parts.push(`拦截 ${tip.intercept.source} 的【${models}】`)
+  }
+  for (const note of tip.notes) parts.push(note)
+  if (tip.counters !== null) parts.push(tip.counters)
+  parts.push(tip.hint)
+  return parts.join('；')
 }

@@ -15,6 +15,7 @@
  */
 import { useEffect, useState } from 'react'
 import type { JSX } from 'react'
+import { ICON_CHECK, ICON_REFRESH, ICON_RELOAD } from './free-run-button-text'
 import { allCovered, bulkToggle, filterRows, rowState, toggleModel } from './model-list'
 
 /** `GET /session-guard/models` 的一行。 */
@@ -117,13 +118,22 @@ export function ModelListPanel(): JSX.Element {
           onClick={() => void commit(bulkToggle(patterns, filtered, !everyCovered))}
           title="只作用于当前过滤结果"
         >
-          {everyCovered ? '取消全选' : '全选'}
+          <span className="sg-btn-icon" aria-hidden="true">
+            {ICON_CHECK}
+          </span>
+          <span className="sg-btn-label">{everyCovered ? '取消全选' : '全选'}</span>
         </button>
         <button type="button" className="sgMlBtn" disabled={loading} onClick={() => void load()} title="重新获取模型列表">
-          {loading ? '获取中…' : '刷新'}
+          <span className="sg-btn-icon" aria-hidden="true">
+            {ICON_REFRESH}
+          </span>
+          <span className="sg-btn-label">{loading ? '获取中…' : '刷新'}</span>
         </button>
         <button type="button" className="sgMlBtn" disabled={loading} onClick={() => void hotReload()} title="重读配置文件后再拉一次">
-          热重载
+          <span className="sg-btn-icon" aria-hidden="true">
+            {ICON_RELOAD}
+          </span>
+          <span className="sg-btn-label">热重载</span>
         </button>
       </div>
       {patterns.length > 0 && (

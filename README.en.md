@@ -23,11 +23,13 @@ Plugin id `dsh-offpeak`, settings namespace `offpeak`, config file `config/offpe
 | Capability | Behaviour |
 |---|---|
 | Configurable peak policy | Peak windows, timezone, per-window weekdays and the weekend rule come from `config/offpeak.json` (env → `$DSH_HOME/config` → `<cwd>/config` → bundled default). A malformed file never silently disables the guard: errors are collected and reported (`configFile.errors` on `/session-guard/settings` and `/diag`), affected keys keep their defaults. |
-| Turn / step gating | On peak entry, running sessions are paused (or gated at the next `agent/pre-step` when `stepLevelPause` is on) and released automatically off peak. Manual `/pause` is never touched by the automatic release. |
+| Turn gating | On peak entry, running sessions are paused at turn level (the current turn finishes first) and released automatically off peak. Manual `/pause` is never touched by the automatic release. |
 | Request-level guard | `agent/request` is checked on **every** request, so sessions started after peak entry — or switched to an official route mid-session — are still caught. `deferredMode: 'hold'` (default) holds the request silently; `'error'` raises a recognisable `PEAK_DEFERRED`. |
 | Target verdict | Priority: explicit `officialProviders` list → **model name (exact match, case-insensitive)** → live `baseURL` host → catalog default endpoint → built-in id (`deepseek-official`) → unknown. A request is held only when the verdict is `official`. |
 | Peak interception list | Tick models in the badge panel (or write `officialModelPatterns`): an entry is a **model name matched exactly**, so ticking `ocg/deepseek-flash` intercepts exactly that model, whatever route serves it — and nothing is intercepted until you tick something. The panel has a keyword filter, select-all / clear-select-all, refresh, hot reload, and a `×` undo on every intercepted entry. |
-| Free-run | Schedule one or more absolute time windows for one session; inside them the session is exempt everywhere (peak entry, step gate, request hold). Per-segment pause/resume, merged up to 8 windows, persisted — shown at the top of the same panel as the interception list. |
+| Free-run | Schedule one or more absolute time windows for one session; inside them the session is exempt everywhere (peak entry, request hold). Per-segment pause/resume, merged up to 8 windows, persisted — shown at the top of the same panel as the interception list. |
+| Peak hours, editable | The panel's bottom `当前高峰谷时` section is prefilled from your config: one `start – end` pair per window (rows can be added/removed) plus a `weekend = off-peak` checkbox. Saving writes `config/offpeak.json` and takes effect immediately, preserving every other key and each row's weekday limits. |
+| Display timezone | Pick any IANA zone (default: the policy timezone) and free-run times, peak windows and the badge tooltip are converted for display; the values in the config file stay untouched. |
 | Badge | One clickable badge in the composer: `高峰` / `高峰 · 拦截中` / `高峰 · 畅跑中` / `谷时` / `周末`; red while blocking, green while allowing. |
 | Retry | Optional backend retry for transient turn failures (off by default); it always yields to the gates. |
 
@@ -92,8 +94,7 @@ and add `dsh-offpeak` to that file's `dsh.profile.bundles`. Then restart DSH (ho
   "officialModelPatterns": [],        // intercepted model names (exact, case-insensitive)
   "officialBaseURLs": ["api.deepseek.com"],
   "deferredMode": "hold",             // 'hold' | 'error'
-  "deferredResume": true,
-  "stepLevelPause": true
+  "deferredResume": true
 }
 ```
 
@@ -101,7 +102,7 @@ and add `dsh-offpeak` to that file's `dsh.profile.bundles`. Then restart DSH (ho
 
 ## HTTP / service surface
 
-`GET /session-guard/status` · `/state?session=` · `/settings` · `/provider?provider=&model=` · `/models` · `/diag` · `/events` (SSE) · `POST /session-guard/rpc` (`stopNextTurn|resume|lockQueue|unlockQueue|stepPause|stepResume|state|reloadConfig|setModelPatterns|freeRunAdd|…`), plus the in-process `sessionGuard` service port.
+`GET /session-guard/status` · `/state?session=` · `/settings` · `/provider?provider=&model=` · `/models` · `/diag` · `POST /session-guard/rpc` (`stopNextTurn|resume|lockQueue|unlockQueue|state|reloadConfig|setModelPatterns|setPeakPolicy|freeRunAdd|…`), plus the in-process `sessionGuard` service port. The `GET /events` SSE stream was removed together with step gating in v3.3.0.
 
 ## Tests
 

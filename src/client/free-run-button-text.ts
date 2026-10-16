@@ -104,6 +104,11 @@ export function toolbarDisabled(view: FreeRunView | null | undefined): boolean {
 export const ICON_PAUSE = '⏸\uFE0E'
 export const ICON_RESUME = '▶\uFE0E'
 export const ICON_DELETE = '×'
+/** v3.3.0：窄宽度下只显示图标的按钮（文字标签由 CSS 隐藏）。 */
+export const ICON_ADD = '＋\uFE0E'
+export const ICON_REFRESH = '⟳\uFE0E'
+export const ICON_RELOAD = '↻\uFE0E'
+export const ICON_CHECK = '☑\uFE0E'
 
 /** 每行暂停 / 恢复图标按钮的悬浮提示。 */
 export function rowPauseTitle(w: FreeRunWindow): string {

@@ -46,8 +46,6 @@ export const DEFAULT_SETTINGS = Object.freeze({
   peakTimezone: '', // 仅覆盖峰窗口判定的时区；'' = 跟随 timezone（spec §六.3）
   pauseMode: 'safe', // 透传 taskControl.pause mode
   pauseReason: 'wait', // 透传 taskControl.pause reason
-  stepLevelPause: true, // step 级门控（agent/pre-step）：高峰在下一个 step 前拉门
-  stepGateTimeoutMs: 300_000, // step 门控超时（防死锁；到期升级为 turn 级 force 暂停）
   queueFallback: true, // 无会话门时回退锁等待队列（简单开关）
   retryEnabled: false, // 自动重试开关（后端，D9；默认关，保守）
   retryText: DEFAULT_RETRY.retryText,
@@ -101,8 +99,6 @@ export const SettingsSchema = z.object({
   peakTimezone: z.string().default(DEFAULT_SETTINGS.peakTimezone).volatile(),
   pauseMode: z.union([z.const('safe'), z.const('force')]).default(DEFAULT_SETTINGS.pauseMode).volatile(),
   pauseReason: z.union([z.const('wait'), z.const('stop')]).default(DEFAULT_SETTINGS.pauseReason).volatile(),
-  stepLevelPause: z.boolean().default(DEFAULT_SETTINGS.stepLevelPause).volatile(),
-  stepGateTimeoutMs: z.number().min(0).default(DEFAULT_SETTINGS.stepGateTimeoutMs).volatile(),
   queueFallback: z.boolean().default(DEFAULT_SETTINGS.queueFallback).volatile(),
   retryEnabled: z.boolean().default(DEFAULT_SETTINGS.retryEnabled).volatile(),
   retryText: z.string().default(DEFAULT_SETTINGS.retryText).volatile(),
