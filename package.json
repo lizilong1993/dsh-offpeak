@@ -1,6 +1,6 @@
 {
   "name": "dsh-offpeak",
-  "version": "3.3.5",
+  "version": "3.3.6",
   "type": "module",
   "description": "可配置峰谷自动会话门：config/offpeak.json 驱动 peak 时段 + 周末全天 off-peak + 单会话「畅跑」限时无视峰谷 + 高峰自动暂停/波谷自动恢复 + 按模型名的高峰拦截列表。",
   "keywords": [
@@ -70,10 +70,10 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-client-locale": ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-client-ui-renderer": ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-client-ui-settings": ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0",
-    "@deepseek-ai/dsh-client-ui-slots": ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0"
+    "@deepseek-ai/dsh-client-locale": ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-client-ui-renderer": ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-client-ui-settings": ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.1.5-rc.2 <0.1.6-0 || >=0.1.7-rc.1 <0.1.8-0 || >=0.2.0-rc.1 <0.2.1-0 || >=0.2.1-rc.1 <0.2.2-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
