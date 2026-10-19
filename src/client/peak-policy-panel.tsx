@@ -72,7 +72,9 @@ export function PeakPolicyPanel({ displayTz, onDisplayTzChange }: PeakPolicyPane
 
   const dirty = !rowsEqual(rows, savedRows) || weekendMode !== savedWeekend
   const invalid = validateRows(rows)
-  const tzInvalid = tzDraft.trim() !== '' && normalizeDisplayTz(tzDraft, displayTz) !== tzDraft.trim()
+  // 当前生效的显示时区（未选过 → 策略时区；策略时区也空 → Asia/Shanghai）与候选项列表。
+  const tzValue = tzDraft !== '' ? tzDraft : policyTz !== '' ? policyTz : 'Asia/Shanghai'
+  const timezoneOptions = [...new Set([tzValue, ...COMMON_TIMEZONES])]
 
   const applyDisplayTz = (value: string) => {
     const next = value.trim()
@@ -125,24 +127,21 @@ export function PeakPolicyPanel({ displayTz, onDisplayTzChange }: PeakPolicyPane
         <label className="sgPpLabel" htmlFor="sgPpTz">
           显示时区
         </label>
-        <input
+        {/* 原生 select：datalist 在部分 Chromium/GUI 组合下只显示匹配项，无法稳定列出全部候选 */}
+        <select
           id="sgPpTz"
           className="sgPpInput"
-          list="sgPpTzList"
-          value={tzDraft}
-          spellCheck={false}
+          value={tzValue}
           onChange={(e) => applyDisplayTz(e.target.value)}
-          placeholder={policyTz === '' ? 'Asia/Shanghai' : policyTz}
-        />
-        <datalist id="sgPpTzList">
-          {COMMON_TIMEZONES.map((tz: string) => (
-            <option key={tz} value={tz} />
+        >
+          {timezoneOptions.map((tz: string) => (
+            <option key={tz} value={tz}>
+              {tz}
+            </option>
           ))}
-        </datalist>
+        </select>
         <span className="sgPpHint">
-          {tzInvalid
-            ? '未知时区（需 IANA 名，如 Asia/Shanghai）'
-            : `只影响展示：畅跑与峰谷时间会按它换算，配置文件仍按 ${policyTz === '' ? '策略时区' : policyTz} 存储`}
+          {`只影响展示：畅跑与峰谷时间会按它换算，配置文件仍按 ${policyTz === '' ? '策略时区' : policyTz} 存储`}
         </span>
       </div>
 

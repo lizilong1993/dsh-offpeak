@@ -31,11 +31,11 @@ export function BadgeTipCard({ tip }: { tip: BadgeTip }) {
   return (
     <div className="sg-tip" role="tooltip" aria-hidden="true">
       <div className="sg-tip-headline">{tip.headline}</div>
-      {tip.intercept !== undefined && (
+      {tip.models !== undefined && (
         <div className="sg-tip-line">
-          <span>{`拦截 ${tip.intercept.source} 的`}</span>
+          <span>拦截列表</span>
           <span className="sg-tip-bracket">【</span>
-          <ModelsMarquee models={tip.intercept.models} />
+          <ModelsMarquee models={tip.models} />
           <span className="sg-tip-bracket">】</span>
         </div>
       )}

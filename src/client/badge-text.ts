@@ -94,8 +94,8 @@ export interface TipTimes {
 export interface BadgeTip {
   /** 第一行：阶段 · 时区[ · 当前窗口]。 */
   headline: string
-  /** 有值时渲染「拦截 <source> 的【models】」（models 为空 → 卡片显示「未设置拦截模型」）。 */
-  intercept?: { source: string; models: string[] }
+  /** 有值时渲染「拦截列表【models】」（models 为空 → 卡片显示「未设置拦截模型」）。 */
+  models?: string[]
   /** 其余说明行（放行口径、周末规则、下一段高峰……）。 */
   notes: string[]
   /** 挂起/延后计数；都为 0 时为 null。 */
@@ -122,14 +122,13 @@ export function badgeTip(status: Status, times: TipTimes = {}): BadgeTip {
   const current = typeof times.currentWindow === 'string' && times.currentWindow !== '' ? times.currentWindow : ''
   const notes: string[] = []
   let headline = `${label} · ${tz}`
-  let intercept: BadgeTip['intercept']
+  let models: string[] | undefined
 
   if (peak) {
     if (current !== '') headline = `${headline} · 当前窗口 ${current}`
     if (status.providerGuard === true) {
-      const providers = Array.isArray(status.officialProviders) ? status.officialProviders : []
-      const source = providers.length > 0 ? providers.join('、') : '内置判定的官方来源'
-      intercept = { source, models: Array.isArray(status.officialModelPatterns) ? [...status.officialModelPatterns] : [] }
+      // 拦截列表是「模型名」集合，可能既不属于官方源、也未必是 DeepSeek 模型 —— 不写来源名，只列模型。
+      models = Array.isArray(status.officialModelPatterns) ? [...status.officialModelPatterns] : []
       notes.push('其它来源照常放行')
     } else {
       notes.push('未启用来源判定：入峰暂停全部会话、请求不拦')
@@ -149,15 +148,15 @@ export function badgeTip(status: Status, times: TipTimes = {}): BadgeTip {
   const deferred = status.deferred ?? 0
   const counters = held > 0 || deferred > 0 ? `挂起请求 ${held} · 延后待恢复 ${deferred}` : null
 
-  return { headline, intercept, notes, counters, hint: '点击展开/收起高峰面板' }
+  return { headline, models, notes, counters, hint: '点击展开/收起高峰面板' }
 }
 
 /** 卡片内容的纯文本版（徽标按钮的 `aria-label` 用；卡片本身 aria-hidden）。 */
 export function tipText(tip: BadgeTip): string {
   const parts: string[] = [tip.headline]
-  if (tip.intercept !== undefined) {
-    const models = tip.intercept.models.length > 0 ? tip.intercept.models.join('、') : '未设置拦截模型'
-    parts.push(`拦截 ${tip.intercept.source} 的【${models}】`)
+  if (tip.models !== undefined) {
+    const list = tip.models.length > 0 ? tip.models.join('、') : '未设置拦截模型'
+    parts.push(`拦截列表【${list}】`)
   }
   for (const note of tip.notes) parts.push(note)
   if (tip.counters !== null) parts.push(tip.counters)

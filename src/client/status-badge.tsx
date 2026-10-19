@@ -123,7 +123,8 @@ export function StatusBadge({ sessionId }: StatusBadgeProps) {
       >
         {peakLabel(status, tasks)}
       </button>
-      <BadgeTipCard tip={tip} />
+      {/* hover 卡片只在面板收起时展示（面板打开后信息已在面板里，避免互相遮挡） */}
+      {!open && <BadgeTipCard tip={tip} />}
       {open && (
         <div className="sg-status-panel" role="dialog" aria-label="高峰面板">
           {/* 畅跑任务区在最上方（v3.1.6：独立的「畅跑」按钮已去掉，UI 内嵌到这里） */}
