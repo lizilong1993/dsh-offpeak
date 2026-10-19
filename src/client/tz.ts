@@ -134,7 +134,7 @@ export function formatWindows(
   return windows.map((w) => formatWindow(w.start, w.end, policyTz, displayTz, ref)).join(' / ')
 }
 
-/** 常用时区（datalist 候选；用户可填任意 IANA 名）。 */
+/** 旧运行时的兜底短名单（无 `Intl.supportedValuesOf` 时用）。 */
 export const COMMON_TIMEZONES: readonly string[] = [
   'Asia/Shanghai',
   'Asia/Tokyo',
@@ -146,6 +146,30 @@ export const COMMON_TIMEZONES: readonly string[] = [
   'America/Los_Angeles',
   'UTC',
 ]
+
+/**
+ * 完整的 IANA 时区清单（国际标准，约 400+ 个）。
+ *
+ * 优先用 `Intl.supportedValuesOf('timeZone')` —— 运行时 tz database 的标准枚举；
+ * 老运行时没有该 API 时退回上面的短名单。`UTC` 不在 V8 的枚举结果里，显式补上。
+ */
+export const IANA_TIMEZONES: readonly string[] = (() => {
+  try {
+    const supported = (Intl as unknown as { supportedValuesOf?: (_key: string) => string[] })
+      .supportedValuesOf
+    if (typeof supported === 'function') {
+      const list = supported('timeZone')
+      if (Array.isArray(list) && list.length > 0) {
+        const out = list.filter((zone): zone is string => typeof zone === 'string' && zone !== '')
+        if (!out.includes('UTC')) out.unshift('UTC')
+        return out
+      }
+    }
+  } catch {
+    /* 落到兜底短名单 */
+  }
+  return [...COMMON_TIMEZONES]
+})()
 
 /** 显示时区偏好的 localStorage 键。 */
 export const DISPLAY_TZ_KEY = 'offpeak.displayTz'

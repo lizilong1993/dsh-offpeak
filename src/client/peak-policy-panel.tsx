@@ -20,7 +20,7 @@ import {
   weekendModeFromSettings,
   type PeakRow,
 } from './peak-policy'
-import { COMMON_TIMEZONES, normalizeDisplayTz, writeDisplayTz } from './tz'
+import { IANA_TIMEZONES, normalizeDisplayTz, writeDisplayTz } from './tz'
 
 export interface PeakPolicyPanelProps {
   /** 生效的显示时区（父组件已把它回退为策略时区）。 */
@@ -74,7 +74,7 @@ export function PeakPolicyPanel({ displayTz, onDisplayTzChange }: PeakPolicyPane
   const invalid = validateRows(rows)
   // 当前生效的显示时区（未选过 → 策略时区；策略时区也空 → Asia/Shanghai）与候选项列表。
   const tzValue = tzDraft !== '' ? tzDraft : policyTz !== '' ? policyTz : 'Asia/Shanghai'
-  const timezoneOptions = [...new Set([tzValue, ...COMMON_TIMEZONES])]
+  const timezoneOptions = [...new Set([tzValue, ...IANA_TIMEZONES])]
 
   const applyDisplayTz = (value: string) => {
     const next = value.trim()
