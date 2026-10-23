@@ -1,6 +1,6 @@
 {
   "id": "dsh-external/dsh-offpeak",
-  "version": "3.3.6",
+  "version": "3.3.7",
   "main": "./src/index.js",
   "description": "可配置峰谷自动会话门：config/offpeak.json 驱动 peak 时段 + 周末全天 off-peak + 单会话「畅跑」限时无视峰谷 + 波谷自动恢复 + 按模型名的高峰拦截列表；面板内可编辑峰谷时段、可选显示时区。",
   "engines": {

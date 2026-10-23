@@ -22,6 +22,7 @@ import { EMPTY_FREE_RUN, readFreeRun, type FreeRunView } from './free-run-button
 import { ModelListPanel } from './model-panel'
 import { PeakPolicyPanel } from './peak-policy-panel'
 import { formatInstant, formatWindow, formatWindows, readDisplayTz } from './tz'
+import { computePanelPlacement, type Placement } from './panel-placement'
 import { injectClientCss } from './styles'
 
 /** slot 运行时注入的会话级 props（sessionId 由 dsh 的 SessionStandardProps 提供）。 */
@@ -57,6 +58,8 @@ export function StatusBadge({ sessionId }: StatusBadgeProps) {
   const [open, setOpen] = useState(false)
   const [displayTz, setDisplayTz] = useState<string>(() => readDisplayTz())
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const [placement, setPlacement] = useState<Placement | null>(null)
 
   injectClientCss()
 
@@ -100,6 +103,34 @@ export function StatusBadge({ sessionId }: StatusBadgeProps) {
     return () => document.removeEventListener('mousedown', onPointerDown)
   }, [open])
 
+  // 面板几何：按触发按钮的实际位置与视口尺寸计算（向上/向下 + 水平夹紧），
+  // 用 position:fixed 绕开祖先容器裁剪 —— 任何窗口尺寸都不被遮挡。
+  useEffect(() => {
+    if (!open) {
+      setPlacement(null)
+      return
+    }
+    const measure = () => {
+      const el = buttonRef.current
+      if (el === null) return
+      const r = el.getBoundingClientRect()
+      setPlacement(
+        computePanelPlacement({
+          anchor: { top: r.top, bottom: r.bottom, left: r.left, width: r.width },
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+          preferredWidth: 380,
+        }),
+      )
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    window.addEventListener('scroll', measure, true)
+    return () => {
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('scroll', measure, true)
+    }
+  }, [open])
+
   if (!status || !status.enabled) return null
 
   const tasks = {
@@ -114,6 +145,7 @@ export function StatusBadge({ sessionId }: StatusBadgeProps) {
     <div className="sg-status-root" ref={rootRef}>
       <button
         type="button"
+        ref={buttonRef}
         className={badgeClassNames(status)}
         aria-label={tipText(tip)}
         aria-expanded={open}
@@ -126,7 +158,24 @@ export function StatusBadge({ sessionId }: StatusBadgeProps) {
       {/* hover 卡片只在面板收起时展示（面板打开后信息已在面板里，避免互相遮挡） */}
       {!open && <BadgeTipCard tip={tip} />}
       {open && (
-        <div className="sg-status-panel" role="dialog" aria-label="高峰面板">
+                <div
+          className="sg-status-panel"
+          role="dialog"
+          aria-label="高峰面板"
+          style={
+            placement === null
+              ? undefined
+              : {
+                  position: placement.position,
+                  left: placement.left,
+                  width: placement.width,
+                  top: placement.top ?? 'auto',
+                  bottom: placement.bottom ?? 'auto',
+                  maxHeight: placement.maxHeight,
+                  transform: 'none',
+                }
+          }
+        >
           {/* 畅跑任务区在最上方（v3.1.6：独立的「畅跑」按钮已去掉，UI 内嵌到这里） */}
           <FreeRunPanel sessionId={sessionId} displayTz={effectiveTz} />
           <div className="sgMlHead">
