@@ -339,8 +339,8 @@ export function createPauseGate({ ctx, pauseStore, pluginId = 'offpeak', makeFol
     if (opts?.auto === true && (current.pausedReason ?? 'manual') === 'manual') {
       return { kind: 'skipped', text: 'session was paused manually — automatic release skipped' }
     }
-    // 0.1.5 compat：source 补 form: 'instructions'（0.1.5 ContextFormed 契约；旧版本忽略未知字段）
-    const followup = (blocks) => enqueueFollowup(agent, makeFollowupMessage({ content: blocks, source: { kind: 'plugin', plugin: pluginId, form: 'instructions' } }), ctx)
+    // v4（0.2.1+）：source.kind 必须是 producer-owned 的 plugin:<id>（旧写法会在 checkpoint flush 时被拒）。form 保持 'instructions'。
+    const followup = (blocks) => enqueueFollowup(agent, makeFollowupMessage({ content: blocks, source: { kind: `plugin:${pluginId}`, form: 'instructions' } }), ctx)
 
     if (current.forced) {
       const tool = current.interruptedTool

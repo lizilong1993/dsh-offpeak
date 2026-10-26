@@ -160,7 +160,7 @@ export function createRetry({ ctx, getSettings, isFrozen, send }) {
             id: `offpeak-retry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             role: 'user',
             content: [{ type: 'text', text }],
-            source: { kind: 'plugin', plugin: 'offpeak', form: 'notice' },
+            source: { kind: 'plugin:offpeak', form: 'notice' },
           })
         }
         s.lastAttemptAt = Date.now()
