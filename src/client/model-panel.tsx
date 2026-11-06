@@ -136,26 +136,61 @@ export function ModelListPanel(): JSX.Element {
           <span className="sg-btn-label">热重载</span>
         </button>
       </div>
-      {patterns.length > 0 && (
-        <div className="sgMlPatterns">
-          <span className="sgMlSentinel">已拦截</span>
-          {patterns.map((p) => (
-            <span key={p} className="sgMlChip">
-              {p}
-              <button
-                type="button"
-                className="sgMlChipUndo"
-                disabled={pending}
-                title="撤销这一项"
-                aria-label={`撤销 ${p}`}
-                onClick={() => void commit(patterns.filter((x) => x !== p))}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
+      {(() => {
+        // 顶部「已拦截」只列**当前目录里确实有勾选框**的条目：否则目录换版后（例如路由改名
+        // amd/ocg/ds → local/cmc）列表里会残留旧名字，看起来像「下面取消了、上面还在」。
+        // 目录里已经没有的残留项单独归到第二行，只能通过 × 撤销。
+        const catalog = new Set(models.map((m) => m.model))
+        const live = patterns.filter((p) => catalog.has(p))
+        const orphan = patterns.filter((p) => !catalog.has(p))
+        if (patterns.length === 0) return null
+        return (
+          <>
+            {live.length > 0 && (
+              <div className="sgMlPatterns">
+                <span className="sgMlSentinel">已拦截</span>
+                {live.map((p) => (
+                  <span key={p} className="sgMlChip">
+                    {p}
+                    <button
+                      type="button"
+                      className="sgMlChipUndo"
+                      disabled={pending}
+                      title="撤销这一项"
+                      aria-label={`撤销 ${p}`}
+                      onClick={() => void commit(patterns.filter((x) => x !== p))}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {orphan.length > 0 && (
+              <div className="sgMlPatterns sgMlPatternsOrphan">
+                <span className="sgMlSentinel" title="这些名字已不在当前模型目录里（路由改名或下线），下方没有对应勾选框">
+                  目录已无
+                </span>
+                {orphan.map((p) => (
+                  <span key={p} className="sgMlChip sgMlChipOrphan">
+                    {p}
+                    <button
+                      type="button"
+                      className="sgMlChipUndo"
+                      disabled={pending}
+                      title="撤销这一项"
+                      aria-label={`撤销 ${p}`}
+                      onClick={() => void commit(patterns.filter((x) => x !== p))}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
+        )
+      })()}
       {writeError !== null && <p className="sgMlError">✗ {writeError}</p>}
       {error !== null && <p className="sgMlHint">{error}</p>}
       {error === null && !loading && filtered.length === 0 && (

@@ -68,6 +68,7 @@ const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
 export function FreeRunPanel({ sessionId, displayTz }: FreeRunPanelProps) {
   const [view, setView] = useState<FreeRunView>(EMPTY_FREE_RUN)
   const [busy, setBusy] = useState(false)
+  const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
   const [creating, setCreating] = useState(false)
   const [fromDate, setFromDate] = useState('')
@@ -92,6 +93,7 @@ export function FreeRunPanel({ sessionId, displayTz }: FreeRunPanelProps) {
       const res = await fetch(`/session-guard/state?session=${encodeURIComponent(sessionId)}`)
       const body = await res.json().catch(() => null)
       setView(readFreeRun(body))
+        setLoaded(true)
     } catch {
       // fail-open：路由不存在 / 网络失败 → 保持上一次状态。
     }
@@ -155,9 +157,10 @@ export function FreeRunPanel({ sessionId, displayTz }: FreeRunPanelProps) {
     [sessionId],
   )
 
-  if (sessionId === undefined || sessionId === '') return null
-  // 插件整体关掉且没有任何任务时不给按钮；已有任务则保留，便于清理。
-  if (!view.available && view.windows.length === 0) return null
+  // 不因为「会话 id 还没到」或「插件暂时不可用」把整块藏起来：
+  // 组件曾被这两条守卫整段移除，表现为面板顶部「畅跑任务」消失（DSH 换版后槽位不再稳定提供
+  // sessionId 时尤其明显）。现在改成始终渲染，条件不满足时禁用操作并给出原因。
+  const noSession = sessionId === undefined || sessionId === ''
 
   const onAdd = async (): Promise<void> => {
     if (fromDate === '' || fromHour === '' || toDate === '' || toHour === '') {
@@ -178,11 +181,16 @@ export function FreeRunPanel({ sessionId, displayTz }: FreeRunPanelProps) {
   const allPaused = allTasksPaused(view)
 
   return (
-    <div className="sg-fr-section" role="group" aria-label="畅跑任务">
+    <div className={noSession || !view.available ? 'sg-fr-section sg-fr-disabled' : 'sg-fr-section'} role="group" aria-label="畅跑任务">
       <div className="sg-fr-head">
         <span className="sg-fr-title">畅跑任务</span>
         <span className="sg-fr-tz">按 {view.timezone === '' ? '本地时区' : view.timezone}</span>
       </div>
+      {loaded && (noSession || !view.available) && (
+        <div className="sg-fr-empty">
+          {noSession ? '当前会话未就绪（还没有 sessionId），畅跑任务暂不可操作' : '插件当前不可用，畅跑任务暂不可操作'}
+        </div>
+      )}
 
       {/* 顶部三个按钮：新建 / 暂停全部 / 删除全部（窄宽度下只显示图标，见 styles.ts 容器查询） */}
       <div className="sg-fr-bar">

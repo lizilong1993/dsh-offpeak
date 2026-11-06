@@ -158,23 +158,12 @@ export function StatusBadge({ sessionId }: StatusBadgeProps) {
       {/* hover 卡片只在面板收起时展示（面板打开后信息已在面板里，避免互相遮挡） */}
       {!open && <BadgeTipCard tip={tip} />}
       {open && (
-                <div
+        <div
           className="sg-status-panel"
           role="dialog"
           aria-label="高峰面板"
-          style={
-            placement === null
-              ? undefined
-              : {
-                  position: placement.position,
-                  left: placement.left,
-                  width: placement.width,
-                  top: placement.top ?? 'auto',
-                  bottom: placement.bottom ?? 'auto',
-                  maxHeight: placement.maxHeight,
-                  transform: 'none',
-                }
-          }
+          data-side={placement === null ? 'up' : placement.side}
+          style={placement === null ? undefined : { maxHeight: placement.maxHeight }}
         >
           {/* 畅跑任务区在最上方（v3.1.6：独立的「畅跑」按钮已去掉，UI 内嵌到这里） */}
           <FreeRunPanel sessionId={sessionId} displayTz={effectiveTz} />
