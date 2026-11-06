@@ -163,7 +163,7 @@ export function StatusBadge({ sessionId }: StatusBadgeProps) {
           role="dialog"
           aria-label="高峰面板"
           data-side={placement === null ? 'up' : placement.side}
-          style={placement === null ? undefined : { maxHeight: placement.maxHeight }}
+          style={placement === null ? undefined : { maxHeight: `min(${placement.maxHeight}px, 70vh)` }}
         >
           {/* 畅跑任务区在最上方（v3.1.6：独立的「畅跑」按钮已去掉，UI 内嵌到这里） */}
           <FreeRunPanel sessionId={sessionId} displayTz={effectiveTz} />

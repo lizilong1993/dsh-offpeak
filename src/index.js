@@ -441,7 +441,13 @@ export function apply(ctx, config = {}) {
   }
 
   // ── 冗余端口：input-traffic 冻结按钮透传接入（D5/D6/D8）──
-  ctx.provide('sessionGuard', bridge)
+  // 幂等：同一进程里若本插件被装配两次（例如 bundles 与 market 热挂载同时存在），
+  // 第二次 provide 会以 "service has been registered" 报错并让整个插件显示「异常」。
+  // 服务已存在时跳过，装配照常继续。
+  if (typeof ctx.provide === 'function') {
+    const already = typeof ctx.get === 'function' ? ctx.get('sessionGuard') : undefined
+    if (already === undefined) ctx.provide('sessionGuard', bridge)
+  }
 
   // ── 自研会话门：安全边界监听（session/event 落地延迟暂停）──
   // 监听在命令注册之前，让任何会话事件都能在安全边界落地 pending pause。
